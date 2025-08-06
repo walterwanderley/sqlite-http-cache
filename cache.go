@@ -92,6 +92,10 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		responseTableName = defaultResponseTableName
 	}
 
+	if strings.EqualFold(tableName, responseTableName) {
+		return nil, fmt.Errorf("use different names on virtual table and response table")
+	}
+
 	err = conn.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
 		url TEXT PRIMARY KEY,
 		status INTEGER,
