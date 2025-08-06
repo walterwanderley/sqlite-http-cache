@@ -53,7 +53,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 				return nil, fmt.Errorf("invalid option: %q", option)
 			}
 			k = strings.TrimSpace(k)
-			v = strings.TrimSpace(v)
+			v = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(v, "\"", ""), "'", ""))
 			switch strings.ToLower(k) {
 			case timeoutOption:
 				i, err := strconv.Atoi(v)
