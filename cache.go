@@ -19,12 +19,13 @@ import (
 )
 
 const (
-	timeoutOption            = "timeout" // timeout in miliseconds
-	insecureOption           = "insecure"
-	responseTableNameOption  = "response_table"
-	oauth2ClientIDOption     = "oauth2_client_id"
-	oauth2ClientSecretOption = "oauth2_client_secret"
-	oauth2TokenURLOption     = "oauth2_token_url"
+	timeoutOption            = "timeout"              // timeout in miliseconds
+	insecureOption           = "insecure"             // insecure skip TLS validation
+	ignoreStatusErrorOption  = "ignore_status_error"  // do not persist responses if status code != 2xx
+	responseTableNameOption  = "response_table"       // table name of the http responses
+	oauth2ClientIDOption     = "oauth2_client_id"     // oauth2 client credentials flow: cient_id
+	oauth2ClientSecretOption = "oauth2_client_secret" // oauth2 client credentials flow: cient_secret
+	oauth2TokenURLOption     = "oauth2_token_url"     // oauth2 client credentials flow: token URL
 
 	defaultResponseTableName = "http_response"
 	defaultVirtualTableName  = "http_request"
@@ -44,6 +45,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		responseTableName string
 		timeout           time.Duration
 		insecure          bool
+		ignoreStatusError bool
 		headers           = make(map[string]string)
 		credentials       clientcredentials.Config
 		err               error
@@ -68,7 +70,11 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 				if err != nil {
 					return nil, fmt.Errorf("invalid %q option: %v", k, err)
 				}
-
+			case ignoreStatusErrorOption:
+				ignoreStatusError, err = strconv.ParseBool(v)
+				if err != nil {
+					return nil, fmt.Errorf("invalid %q option: %v", k, err)
+				}
 			case responseTableNameOption:
 				if tableNameValid(v) {
 					responseTableName = v
@@ -110,14 +116,14 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
 		client = credentials.Client(ctx)
 	}
-	vt, err := NewRequestVirtualTable(tableName, client, responseTableName, conn)
+	vt, err := NewRequestVirtualTable(tableName, client, ignoreStatusError, responseTableName, conn)
 	if err != nil {
 		return nil, err
 	}
 	return vt, declare("CREATE TABLE x(url TEXT PRIMARY KEY)")
 }
 
-func NewRequestVirtualTable(virtualTableName string, client *http.Client, responseTableName string, conn *sqlite.Conn) (*RequestVirtualTable, error) {
+func NewRequestVirtualTable(virtualTableName string, client *http.Client, ignoreStatusError bool, responseTableName string, conn *sqlite.Conn) (*RequestVirtualTable, error) {
 	stmt, _, err := conn.Prepare(fmt.Sprintf(`
 		INSERT INTO %s(url, status, body, headers, timestamp) 
 		VALUES(?, ?, ?, ?, unixepoch())
@@ -130,15 +136,21 @@ func NewRequestVirtualTable(virtualTableName string, client *http.Client, respon
 		return nil, err
 	}
 
-	return &RequestVirtualTable{client: client, tableName: virtualTableName, conn: conn, stmt: stmt}, nil
+	return &RequestVirtualTable{
+		client:            client,
+		ignoreStatusError: ignoreStatusError,
+		tableName:         virtualTableName,
+		conn:              conn,
+		stmt:              stmt}, nil
 }
 
 type RequestVirtualTable struct {
-	client    *http.Client
-	tableName string
-	conn      *sqlite.Conn
-	stmt      *sqlite.Stmt
-	mu        sync.Mutex
+	client            *http.Client
+	ignoreStatusError bool
+	tableName         string
+	conn              *sqlite.Conn
+	stmt              *sqlite.Stmt
+	mu                sync.Mutex
 }
 
 func (vt *RequestVirtualTable) BestIndex(_ *sqlite.IndexInfoInput) (*sqlite.IndexInfoOutput, error) {
@@ -164,6 +176,10 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
+
+	if vt.ignoreStatusError && resp.StatusCode/100 != 2 {
+		return 0, nil
+	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
