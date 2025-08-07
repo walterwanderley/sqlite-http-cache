@@ -4,7 +4,7 @@ SQLite Extension to cache HTTP requests
 ## Compiling
 
 ```sh
-go build -buildmode=c-shared -o httpcache.so
+go build -ldflags="-s -w" -buildmode=c-shared -o httpcache.so
 ```
 
 ## Basic usage
@@ -95,7 +95,7 @@ go install github.com/walterwanderley/cmd/sqlite-http-refresh@latest
 2. Run
 
 ```sh
-sqlite-http-refresh file://test.db ./http_cache.so 
+sqlite-http-refresh file:example.db ./httpcache.so 
 ```
 
 ### Operating System Schedulers
