@@ -110,4 +110,4 @@ sqlite-http-refresh file://test.db ./http_cache.so
 
 - **Node.js:** Libraries such as node-cron or agenda provide similar scheduling capabilities for Node.js applications.
 
-- **Golang:** [Check an example] using the stdlib.
+- **Golang:** [Check an example](https://github.com/walterwanderley/sqlite-http-cache/blob/main/cmd/sqlite-http-refresh/main.go) using the stdlib.
