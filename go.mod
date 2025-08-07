@@ -2,10 +2,9 @@ module github.com/walterwanderley/sqlite-http-cache
 
 go 1.24
 
-replace go.riyazali.net/sqlite => ../sqlite
-
 require (
-	go.riyazali.net/sqlite v0.0.0
+	github.com/mattn/go-sqlite3 v1.14.6
+	github.com/walterwanderley/sqlite v0.0.0-20250807012920-53f6c99d48ff
 	golang.org/x/oauth2 v0.30.0
 )
 

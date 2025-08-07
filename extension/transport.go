@@ -1,4 +1,4 @@
-package main
+package extension
 
 import (
 	"crypto/tls"
@@ -10,13 +10,9 @@ type Transport struct {
 	Headers map[string]string
 }
 
-func NewTransport(insecure bool, headers map[string]string) http.RoundTripper {
+func NewTransport(tlsConfig *tls.Config, headers map[string]string) http.RoundTripper {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if insecure {
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-	}
+	transport.TLSClientConfig = tlsConfig
 	if len(headers) == 0 {
 		return transport
 	}

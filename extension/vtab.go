@@ -1,4 +1,4 @@
-package main
+package extension
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 
-	"go.riyazali.net/sqlite"
+	"github.com/walterwanderley/sqlite"
 )
 
 type RequestVirtualTable struct {
@@ -22,14 +22,13 @@ type RequestVirtualTable struct {
 }
 
 func NewRequestVirtualTable(virtualTableName string, client *http.Client, ignoreStatusError bool, responseTableName string, conn *sqlite.Conn) (*RequestVirtualTable, error) {
-	stmt, _, err := conn.Prepare(fmt.Sprintf(`
-		INSERT INTO %s(url, status, body, headers, timestamp) 
-		VALUES(?, ?, ?, ?, unixepoch())
+	stmt, _, err := conn.Prepare(fmt.Sprintf(`INSERT INTO %s(url, status, body, headers, timestamp) 
+		VALUES(?, ?, ?, ?, DATETIME('now'))
 		ON CONFLICT(url) DO UPDATE SET 
 		status = ?,
 		body = ?,
 		headers = ?,
-		timestamp = unixepoch()`, responseTableName))
+		timestamp = DATETIME('now')`, responseTableName))
 	if err != nil {
 		return nil, err
 	}
