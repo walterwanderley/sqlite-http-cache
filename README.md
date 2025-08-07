@@ -13,7 +13,7 @@ go build -ldflags="-s -w" -buildmode=c-shared -o httpcache.so
 sqlite3
 
 # Load the extension
-.load /path/to/httpcache
+.load /path/to/httpcache.so
 
 # Insert URL into the temp.http_request virtual table to trigger the HTTP Request 
 INSERT INTO temp.http_request VALUES('https://swapi.tech/api/films/1');
@@ -95,7 +95,7 @@ go install github.com/walterwanderley/cmd/sqlite-http-refresh@latest
 2. Run
 
 ```sh
-sqlite-http-refresh file:example.db ./httpcache.so 
+sqlite-http-refresh file:example.db?_journal=WAL&_sync=NORMAL&_timeout=5000&_txlock=immediate
 ```
 
 ### Operating System Schedulers

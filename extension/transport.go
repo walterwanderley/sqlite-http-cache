@@ -5,23 +5,23 @@ import (
 	"net/http"
 )
 
-type Transport struct {
+type transport struct {
 	http.RoundTripper
 	Headers map[string]string
 }
 
-func NewTransport(tlsConfig *tls.Config, headers map[string]string) http.RoundTripper {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = tlsConfig
+func newTransport(tlsConfig *tls.Config, headers map[string]string) http.RoundTripper {
+	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport.TLSClientConfig = tlsConfig
 	if len(headers) == 0 {
-		return transport
+		return baseTransport
 	}
-	return &Transport{
-		transport, headers,
+	return &transport{
+		baseTransport, headers,
 	}
 }
 
-func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req2 := req.Clone(req.Context())
 	for k, v := range t.Headers {
 		req2.Header.Set(k, v)

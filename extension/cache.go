@@ -19,20 +19,6 @@ import (
 	"github.com/walterwanderley/sqlite-http-cache/config"
 )
 
-// #cgo linux LDFLAGS: -Wl,--unresolved-symbols=ignore-in-object-files
-// #cgo darwin LDFLAGS: -Wl,-undefined,dynamic_lookup
-// #cgo windows LDFLAGS: -Wl,--allow-multiple-definition
-import "C"
-
-func init() {
-	sqlite.RegisterNamed("default", func(api *sqlite.ExtensionApi) (sqlite.ErrorCode, error) {
-		if err := api.CreateModule(config.DefaultVirtualTableName, &CacheModule{}, sqlite.ReadOnly(false)); err != nil {
-			return sqlite.SQLITE_ERROR, err
-		}
-		return sqlite.SQLITE_OK, nil
-	})
-}
-
 var tableNameValid = regexp.MustCompilePOSIX("^[a-zA-Z_][a-zA-Z0-9_.]*$").MatchString
 
 type CacheModule struct {
@@ -150,7 +136,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 
 	client := &http.Client{
 		Timeout:   timeout,
-		Transport: NewTransport(&tlsConfig, headers),
+		Transport: newTransport(&tlsConfig, headers),
 	}
 
 	if credentials.TokenURL != "" && credentials.ClientID != "" {

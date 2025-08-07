@@ -5,18 +5,23 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
-	sqlite3 "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/walterwanderley/sqlite-http-cache/config"
+	_ "github.com/walterwanderley/sqlite-http-cache/extension"
 )
 
 var (
 	interval time.Duration
 	ttl      uint
+	matchURL string
 
 	timeout           uint
 	insecure          bool
@@ -33,9 +38,10 @@ var (
 )
 
 func main() {
-	// Scheduler
+	// Scheduler strategy
 	flag.DurationVar(&interval, "check-interval", 30*time.Second, "Interval to wait for check expired data")
 	flag.UintVar(&ttl, "ttl", 30*60, "Time to Live in seconds")
+	flag.StringVar(&matchURL, "match-url", "", "Filter URLs")
 	// Request/Store config
 	flag.UintVar(&timeout, "timeout", 30*1000, "Timeout in milliseconds")
 	flag.BoolVar(&insecure, "insecure", false, "Disable TLS verification")
@@ -56,31 +62,77 @@ func main() {
 	}
 
 	args := flag.Args()
-	if len(args) != 2 {
-		log.Fatalf("Usage: %s [DSN] [Path to sqlite-http-cache Extension]\n\nExample:\n\t%s file:test.db /path/to/http_cache.so\n", os.Args[0], os.Args[0])
+	if len(args) != 1 {
+		log.Fatalf("Usage: %s <flags> [DSN]\n\nExample:\n\t%s file:example.db?_journal=WAL&_sync=NORMAL&_timeout=5000&_txlock=immediate\n", os.Args[0], os.Args[0])
 	}
-	dsn, extensionPath := args[0], args[1]
+	dsn := args[0]
 
-	driverName := "sqlite-http-cache"
-	sql.Register(driverName, &sqlite3.SQLiteDriver{
-		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-			return conn.LoadExtension(extensionPath, "sqlite3_extension_init")
-		},
-	})
-
-	db, err := sql.Open(driverName, dsn)
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		log.Fatalf("cannot connect to the database: %v", err)
 	}
 	defer db.Close()
 
-	res, err := db.Exec("INSERT INTO temp.http_request(url) SELECT url FROM http_response")
+	_, err = db.Exec(fmt.Sprintf("CREATE VIRTUAL TABLE temp.http_refresh USING http_request(%s)", opts()))
 	if err != nil {
-		panic(err)
+		log.Fatalf("error creating virtual table: %v", err)
+	}
+
+	stmt, err := db.Prepare(fmt.Sprintf(`INSERT INTO temp.http_refresh(url) 
+	SELECT url FROM %s
+	WHERE url LIKE ? AND unixepoch() - unixepoch(timestamp) > ?`, responseTableName))
+	if err != nil {
+		log.Fatalf("error preparing statement: %v", err)
+	}
+	defer stmt.Close()
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	refreshData(stmt)
+	if interval == 0 {
+		return
+	}
+
+	fmt.Println("Press CTRL+C to exit")
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			refreshData(stmt)
+		case <-done:
+			return
+		}
+	}
+}
+
+func refreshData(stmt *sql.Stmt) {
+	slog.Info("starting data verification")
+
+	res, err := stmt.Exec(matchURL, ttl)
+	if err != nil {
+		slog.Error("error refreshing data", "error", err)
+		return
 	}
 
 	rowsAffected, _ := res.RowsAffected()
-	fmt.Println("Rows affected:", rowsAffected)
+	slog.Info("verification finished", "rows_affected", rowsAffected)
+}
 
-	// TODO polling
+func opts() string {
+	opts := make([]string, 0)
+	opts = append(opts, fmt.Sprintf("%s='%d'", config.Timeout, timeout))
+	opts = append(opts, fmt.Sprintf("%s='%v'", config.Insecure, insecure))
+	opts = append(opts, fmt.Sprintf("%s='%v'", config.IgnoreStatusError, ignoreStatusError))
+	opts = append(opts, fmt.Sprintf("%s='%s'", config.ResponseTableName, responseTableName))
+	opts = append(opts, fmt.Sprintf("%s='%s'", config.Oauth2ClientID, oauth2ClientID))
+	opts = append(opts, fmt.Sprintf("%s='%s'", config.Oauth2ClientSecret, oauth2ClientSecret))
+	opts = append(opts, fmt.Sprintf("%s='%s'", config.Oauth2TokenURL, oauth2TokenURL))
+	opts = append(opts, fmt.Sprintf("%s='%s'", config.CertFile, certFile))
+	opts = append(opts, fmt.Sprintf("%s='%s'", config.CertKeyFile, certKeyFile))
+	opts = append(opts, fmt.Sprintf("%s='%s'", config.CertCAFile, caFile))
+	return strings.Join(opts, ", ")
 }
