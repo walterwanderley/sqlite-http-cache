@@ -4,35 +4,52 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 )
 
 type concurrentRepository struct {
-	workers    []*worker
+	db         *sql.DB
+	queriers   []*querier
 	globalQuit chan struct{}
+
+	writers []*sql.Stmt
+	// roundRobin strategy to choose one writer
+	currentWriter int
+	muWriter      sync.Mutex
 }
 
-func newConcurrentRepository(db *sql.DB, tableNames ...string) (Repository, error) {
+func newConcurrentRepository(db *sql.DB, tableNames ...string) (*concurrentRepository, error) {
 	globalQuit := make(chan struct{})
 
-	workers := make([]*worker, len(tableNames))
+	size := len(tableNames)
+	queriers := make([]*querier, size)
+	writers := make([]*sql.Stmt, size)
 	for i, tableName := range tableNames {
-		stmt, err := db.Prepare(fmt.Sprintf("SELECT status, body, headers, timestamp FROM %s WHERE url = ?", tableName))
+		readStmt, err := db.Prepare(getReaderQuery(tableName))
 		if err != nil {
-			return nil, fmt.Errorf("prepare query for %q: %w", tableName, err)
+			return nil, fmt.Errorf("prepare read query for %q: %w", tableName, err)
 		}
-		w := newWorker(stmt)
-		workers[i] = w
-		w.start()
+		q := newQuerier(readStmt, tableName)
+		queriers[i] = q
+		q.start()
+
+		writeStmt, err := db.Prepare(getWriterQuery(tableName))
+		if err != nil {
+			return nil, fmt.Errorf("prepare writer query for %q: %w", tableName, err)
+		}
+		writers[i] = writeStmt
 	}
 
 	return &concurrentRepository{
-		workers:    workers,
+		db:         db,
+		queriers:   queriers,
 		globalQuit: globalQuit,
+		writers:    writers,
 	}, nil
 }
 
 func (r *concurrentRepository) FindByURL(ctx context.Context, url string) (*Response, error) {
-	size := len(r.workers)
+	size := len(r.queriers)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -45,8 +62,8 @@ func (r *concurrentRepository) FindByURL(ctx context.Context, url string) (*Resp
 	}
 
 	go func() {
-		for _, w := range r.workers {
-			w.source <- unitWork
+		for _, q := range r.queriers {
+			q.source <- unitWork
 		}
 	}()
 	var count int
@@ -66,6 +83,33 @@ func (r *concurrentRepository) FindByURL(ctx context.Context, url string) (*Resp
 	}
 }
 
+func (r *concurrentRepository) Write(ctx context.Context, url string, resp *Response) error {
+	r.muWriter.Lock()
+	defer r.muWriter.Unlock()
+	r.currentWriter++
+	if r.currentWriter >= len(r.writers) {
+		r.currentWriter = 0
+	}
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: false})
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	if resp.TableName != "" {
+		_, err = tx.ExecContext(ctx, "DELETE FROM "+resp.TableName+" WHERE url = ?", url)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	err = execWriter(ctx, tx.StmtContext(ctx, r.writers[r.currentWriter]), url, resp)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
 func (r *concurrentRepository) Close() error {
 	close(r.globalQuit)
 	return nil
@@ -77,33 +121,36 @@ type work struct {
 	resp chan *Response
 }
 
-type worker struct {
-	source chan work
-	quit   chan struct{}
-	stmt   *sql.Stmt
+type querier struct {
+	source    chan work
+	quit      chan struct{}
+	stmt      *sql.Stmt
+	tableName string
 }
 
-func newWorker(stmt *sql.Stmt) *worker {
-	return &worker{
-		stmt: stmt,
+func newQuerier(stmt *sql.Stmt, tableName string) *querier {
+	return &querier{
+		stmt:      stmt,
+		tableName: tableName,
 	}
 }
 
-func (w *worker) start() {
-	w.source = make(chan work, 10)
+func (q *querier) start() {
+	q.source = make(chan work, 10)
 	go func() {
 		for {
 			select {
-			case unitWork := <-w.source:
-				response, err := rowToResponse(w.stmt.QueryRowContext(unitWork.ctx, unitWork.url))
+			case unitWork := <-q.source:
+				response, err := rowToResponse(q.stmt.QueryRowContext(unitWork.ctx, unitWork.url))
 				if err != nil {
 					unitWork.resp <- nil
 					continue
 				}
+				response.TableName = q.tableName
 				unitWork.resp <- response
 
-			case <-w.quit:
-				w.stmt.Close()
+			case <-q.quit:
+				q.stmt.Close()
 				return
 			}
 		}

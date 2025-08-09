@@ -3,25 +3,34 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"sync"
 )
 
 type singleRepository struct {
-	stmt *sql.Stmt
+	readStmt  *sql.Stmt
+	writeStmt *sql.Stmt
+	mu        sync.Mutex
 }
 
 func newSingleRepository(db *sql.DB, tableName string) (*singleRepository, error) {
-	stmt, err := db.Prepare(fmt.Sprintf("SELECT status, body, headers, timestamp FROM %s WHERE url = ?", tableName))
+	readStmt, err := db.Prepare(getReaderQuery(tableName))
 	if err != nil {
-		return nil, fmt.Errorf("prepare query for %q: %w", tableName, err)
+		return nil, fmt.Errorf("prepare reader query for %q: %w", tableName, err)
+	}
+	writeStmt, err := db.Prepare(getWriterQuery(tableName))
+	if err != nil {
+		return nil, fmt.Errorf("prepare writer query for %q: %w", tableName, err)
 	}
 	return &singleRepository{
-		stmt: stmt,
+		readStmt:  readStmt,
+		writeStmt: writeStmt,
 	}, nil
 }
 
 func (r *singleRepository) FindByURL(ctx context.Context, url string) (*Response, error) {
-	response, err := rowToResponse(r.stmt.QueryRowContext(ctx, url))
+	response, err := rowToResponse(r.readStmt.QueryRowContext(ctx, url))
 	if err != nil {
 		return nil, err
 	}
@@ -29,6 +38,12 @@ func (r *singleRepository) FindByURL(ctx context.Context, url string) (*Response
 	return response, nil
 }
 
+func (r *singleRepository) Write(ctx context.Context, url string, resp *Response) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return execWriter(ctx, r.writeStmt, url, resp)
+}
+
 func (r *singleRepository) Close() error {
-	return nil
+	return errors.Join(r.readStmt.Close(), r.writeStmt.Close())
 }

@@ -11,17 +11,32 @@ import (
 
 var HTTPClient internal.ContextKey
 
+type transport interface {
+	http.RoundTripper
+	io.Closer
+}
+
 type Config struct {
-	DB     *sql.DB
-	Tables []string
+	DB       *sql.DB
+	Tables   []string
+	ReadOnly bool
 }
 
 func (c Config) Client(ctx context.Context) (*http.Client, io.Closer, error) {
 	cc := internal.ContextClient(ctx)
-	t, err := NewTransport(cc.Transport, c.DB, c.Tables...)
+	var (
+		t   transport
+		err error
+	)
+	if c.ReadOnly {
+		t, err = newReadOnlyTransport(cc.Transport, c.DB, c.Tables...)
+	} else {
+		t, err = newReadWriteTransport(cc.Transport, c.DB, c.Tables...)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return &http.Client{
 		Transport:     t,
 		CheckRedirect: cc.CheckRedirect,

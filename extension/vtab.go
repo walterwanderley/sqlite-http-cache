@@ -76,11 +76,11 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 		return 0, err
 	}
 
-	var headersBuf bytes.Buffer
-	json.NewEncoder(&headersBuf).Encode(resp.Header)
-
 	body := string(bodyBytes)
 	status := int64(resp.StatusCode)
+
+	var headersBuf bytes.Buffer
+	json.NewEncoder(&headersBuf).Encode(resp.Header)
 	headers := headersBuf.String()
 
 	vt.mu.Lock()

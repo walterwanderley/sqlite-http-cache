@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -12,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/elazarl/goproxy"
 	_ "github.com/mattn/go-sqlite3"
@@ -20,23 +18,31 @@ import (
 	"github.com/walterwanderley/sqlite-http-cache/db"
 )
 
+var (
+	port       uint
+	allowHTTP2 bool
+	verbose    bool
+
+	ttl uint
+
+	caCert    string
+	caCertKey string
+
+	responseTables    string
+	forceCreateTables bool
+	readOnly          bool
+)
+
 func main() {
-	var (
-		port       uint
-		allowHTTP2 bool
-		verbose    bool
-
-		caCert    string
-		caCertKey string
-
-		responseTables string
-	)
 	flag.UintVar(&port, "p", 8080, "Server port")
 	flag.BoolVar(&verbose, "v", false, "Enable verbose mode")
 	flag.BoolVar(&allowHTTP2, "h2", false, "Allow HTTP2")
+	flag.UintVar(&ttl, "ttl", 0, "Time to Live in seconds (0 is infinite time)")
 	flag.StringVar(&responseTables, "response-tables", "", "Comma separated list of database tables used to store response data")
+	flag.BoolVar(&forceCreateTables, "force-create-tables", false, "Force create response tables if not exists")
 	flag.StringVar(&caCert, "ca-cert", "", "Path to CA Certificate file (required to HTTPS proxy)")
 	flag.StringVar(&caCertKey, "ca-cert-key", "", "Path to CA Certificate Key file (required to HTTPS proxy)")
+	flag.BoolVar(&readOnly, "ro", false, "Read Only mode. Do not store new HTTP responses")
 	flag.Parse()
 
 	if len(flag.Args()) != 1 {
@@ -58,6 +64,12 @@ func main() {
 		}
 	} else {
 		tableList = strings.Split(responseTables, ",")
+		if forceCreateTables {
+			err := db.CreateResponseTables(sqlDB, tableList...)
+			if err != nil {
+				log.Fatalf("force create tables: %v", err)
+			}
+		}
 	}
 
 	repository, err := db.NewRepository(sqlDB, tableList...)
@@ -86,30 +98,14 @@ func main() {
 		proxy.Logger.Printf("INFO: Starting HTTP Proxy...")
 	}
 
-	proxy.OnRequest().DoFunc(
-		func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-			if r.Method != http.MethodGet || ctx.Req == nil || ctx.Req.URL == nil {
-				return r, nil
-			}
-
-			url := ctx.Req.URL.String()
-			resp, err := repository.FindByURL(r.Context(), url)
-			if err != nil {
-				if !errors.Is(err, sql.ErrNoRows) {
-					proxy.Logger.Printf("ERROR: query error: %s", err.Error())
-				}
-				return r, nil
-			}
-			if verbose {
-				proxy.Logger.Printf("INFO: serving from database url=%s status=%d timestamp=%s", url, resp.Status, resp.Timestamp.Format(time.RFC3339))
-			}
-
-			return r, &http.Response{
-				StatusCode: resp.Status,
-				Body:       resp.Body,
-				Header:     http.Header(resp.Headers),
-			}
+	proxy.OnRequest().Do(&requestHandler{
+		querier: repository,
+	})
+	if !readOnly {
+		proxy.OnResponse().Do(&responseHandler{
+			writer: repository,
 		})
+	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
