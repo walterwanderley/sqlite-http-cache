@@ -72,12 +72,12 @@ func (r *MultiDatabaseRepository) Write(ctx context.Context, url string, resp *R
 	var cr Repository
 	if resp.DatabaseID == -1 {
 		r.muWriter.Lock()
-		defer r.muWriter.Unlock()
 		r.currentWriter++
 		if r.currentWriter >= len(r.concurrentRepositories) {
 			r.currentWriter = 0
 		}
 		cr = r.concurrentRepositories[r.currentWriter]
+		r.muWriter.Unlock()
 	} else {
 		cr = r.concurrentRepositories[resp.DatabaseID]
 	}
