@@ -28,16 +28,18 @@ func (h *responseHandler) Handle(resp *http.Response, ctx *goproxy.ProxyCtx) *ht
 		if err != nil {
 			slog.Error("adapter response body", "error", err)
 		} else {
-			userData := ctx.UserData.(string)
-			tableName, databaseID, ok := strings.Cut(userData, ":")
-			if ok {
-				responseDB.DatabaseID, _ = strconv.Atoi(databaseID)
-			}
-			responseDB.TableName = tableName
-			err := h.writer.Write(context.Background(), ctx.Req.URL.String(), responseDB)
-			if err != nil {
-				slog.Error("recording response", "error", err, "url", ctx.Req.URL.String(), "status", resp.StatusCode)
-			}
+			go func() {
+				userData := ctx.UserData.(string)
+				tableName, databaseID, ok := strings.Cut(userData, ":")
+				if ok {
+					responseDB.DatabaseID, _ = strconv.Atoi(databaseID)
+				}
+				responseDB.TableName = tableName
+				err := h.writer.Write(context.Background(), ctx.Req.URL.String(), responseDB)
+				if err != nil {
+					slog.Error("recording response", "error", err, "url", ctx.Req.URL.String(), "status", resp.StatusCode)
+				}
+			}()
 		}
 	}
 	return resp
