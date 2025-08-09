@@ -44,7 +44,7 @@ func (t *readOnlyTransport) RoundTrip(req *http.Request) (*http.Response, error)
 
 	url := req.URL.String()
 	resp, err := t.querier.FindByURL(req.Context(), url)
-	if err != nil || time.Since(resp.Timestamp) > t.ttl {
+	if err != nil || (t.ttl > 0 && time.Since(resp.Timestamp) > t.ttl) {
 		return t.base.RoundTrip(req)
 	}
 

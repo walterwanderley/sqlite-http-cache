@@ -20,6 +20,7 @@ import (
 
 var (
 	port       uint
+	dbParams   string
 	allowHTTP2 bool
 	verbose    bool
 
@@ -35,6 +36,7 @@ var (
 
 func main() {
 	flag.UintVar(&port, "p", 8080, "Server port")
+	flag.StringVar(&dbParams, "db-params", "_journal=WAL&_sync=NORMAL&_timeout=5000&_txlock=immediate", "Database connection params")
 	flag.BoolVar(&verbose, "v", false, "Enable verbose mode")
 	flag.BoolVar(&allowHTTP2, "h2", false, "Allow HTTP2")
 	flag.UintVar(&ttl, "ttl", 0, "Time to Live in seconds (0 is infinite time)")
@@ -45,36 +47,57 @@ func main() {
 	flag.BoolVar(&readOnly, "ro", false, "Read Only mode. Do not store new HTTP responses")
 	flag.Parse()
 
-	if len(flag.Args()) != 1 {
-		log.Fatalf("Usage: %s <flags> [DSN]\n\nExample:\n\t%s file:example.db\n", os.Args[0], os.Args[0])
+	if len(flag.Args()) == 0 {
+		log.Fatalf("Usage: %s <flags> [DatabasePath1] [DatabasePathN\n\nExample:\n\t%s example.db example2.db example3.db\n", os.Args[0], os.Args[0])
 	}
-	dsn := flag.Args()[0]
 
-	sqlDB, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		log.Fatalf("open db error: %v", err)
-	}
-	defer sqlDB.Close()
-
-	var tableList []string
-	if responseTables == "" {
-		tableList, err = db.ResponseTables(sqlDB)
-		if err != nil {
-			log.Fatalf("discovery response tables: %v", err)
+	dbs := make([]*sql.DB, 0)
+	var (
+		repository db.Repository
+		tableList  []string
+		err        error
+	)
+	for _, file := range flag.Args() {
+		var dsn string
+		if file == ":memory:" {
+			dsn = file + "?cache=shared"
+		} else {
+			dsn = fmt.Sprintf("file:%s?%s", file, dbParams)
 		}
-	} else {
-		tableList = strings.Split(responseTables, ",")
-		if forceCreateTables {
-			err := db.CreateResponseTables(sqlDB, tableList...)
+
+		sqlDB, err := sql.Open("sqlite3", dsn)
+		if err != nil {
+			log.Fatalf("open db error: %v", err)
+		}
+		defer sqlDB.Close()
+
+		dbs = append(dbs, sqlDB)
+
+		if responseTables == "" {
+			tableList, err = db.ResponseTables(sqlDB)
 			if err != nil {
-				log.Fatalf("force create tables: %v", err)
+				log.Fatalf("discovery response tables: %v", err)
+			}
+		} else {
+			tableList = strings.Split(responseTables, ",")
+			if forceCreateTables {
+				err := db.CreateResponseTables(sqlDB, tableList...)
+				if err != nil {
+					log.Fatalf("force create tables: %v", err)
+				}
 			}
 		}
 	}
-
-	repository, err := db.NewRepository(sqlDB, tableList...)
-	if err != nil {
-		log.Fatalf("new repository: %v", err)
+	if len(dbs) == 1 {
+		repository, err = db.NewRepository(dbs[0], tableList...)
+		if err != nil {
+			log.Fatalf("new repository: %v", err)
+		}
+	} else {
+		repository, err = db.NewMultiDatabaseRepository(dbs)
+		if err != nil {
+			log.Fatalf("new multi database repository: %v", err)
+		}
 	}
 	defer repository.Close()
 

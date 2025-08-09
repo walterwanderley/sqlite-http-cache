@@ -20,11 +20,12 @@ type Repository interface {
 }
 
 type Response struct {
-	Status    int
-	Body      io.ReadCloser
-	Headers   map[string][]string
-	Timestamp time.Time
-	TableName string
+	Status     int
+	Body       io.ReadCloser
+	Headers    map[string][]string
+	Timestamp  time.Time
+	DatabaseID int
+	TableName  string
 }
 
 func NewRepository(db *sql.DB, tableNames ...string) (Repository, error) {
@@ -43,7 +44,7 @@ func NewRepository(db *sql.DB, tableNames ...string) (Repository, error) {
 		return newSingleRepository(db, tableNames[0])
 	}
 
-	return newConcurrentRepository(db, tableNames...)
+	return newConcurrentRepository(db, 0, tableNames...)
 }
 
 func CreateResponseTables(db *sql.DB, tableNames ...string) error {

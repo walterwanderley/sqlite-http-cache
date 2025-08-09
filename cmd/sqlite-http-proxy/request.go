@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -33,13 +34,13 @@ func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 			slog.Error("database query", "error", err.Error())
 		}
 		// tell the responseHandler to save the new response data
-		ctx.UserData = ""
+		ctx.UserData = ":-1"
 		return r, nil
 	}
 
 	if !readOnly && uint(time.Since(resp.Timestamp).Seconds()) > ttl {
 		// data is too old, tell the responseHandler to save the new data
-		ctx.UserData = resp.TableName
+		ctx.UserData = fmt.Sprintf("%s:%d", resp.TableName, resp.DatabaseID)
 		return r, nil
 	}
 	if verbose {

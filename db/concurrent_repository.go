@@ -16,9 +16,13 @@ type concurrentRepository struct {
 	// roundRobin strategy to choose one writer
 	currentWriter int
 	muWriter      sync.Mutex
+
+	// workers for MultiDatabaseRepository
+	source chan work
+	quit   chan struct{}
 }
 
-func newConcurrentRepository(db *sql.DB, tableNames ...string) (*concurrentRepository, error) {
+func newConcurrentRepository(db *sql.DB, databaseID int, tableNames ...string) (*concurrentRepository, error) {
 	globalQuit := make(chan struct{})
 
 	size := len(tableNames)
@@ -29,7 +33,7 @@ func newConcurrentRepository(db *sql.DB, tableNames ...string) (*concurrentRepos
 		if err != nil {
 			return nil, fmt.Errorf("prepare read query for %q: %w", tableName, err)
 		}
-		q := newQuerier(readStmt, tableName)
+		q := newQuerier(readStmt, databaseID, tableName)
 		queriers[i] = q
 		q.start()
 
@@ -111,8 +115,30 @@ func (r *concurrentRepository) Write(ctx context.Context, url string, resp *Resp
 }
 
 func (r *concurrentRepository) Close() error {
+	if r.quit != nil {
+		close(r.quit)
+	}
 	close(r.globalQuit)
 	return nil
+}
+
+func (r *concurrentRepository) start() {
+	r.source = make(chan work, 10)
+	go func() {
+		for {
+			select {
+			case unitWork := <-r.source:
+				resp, err := r.FindByURL(unitWork.ctx, unitWork.url)
+				if err != nil {
+					unitWork.resp <- nil
+					continue
+				}
+				unitWork.resp <- resp
+			case <-r.quit:
+				return
+			}
+		}
+	}()
 }
 
 type work struct {
@@ -122,16 +148,18 @@ type work struct {
 }
 
 type querier struct {
-	source    chan work
-	quit      chan struct{}
-	stmt      *sql.Stmt
-	tableName string
+	source     chan work
+	quit       chan struct{}
+	stmt       *sql.Stmt
+	tableName  string
+	databaseID int
 }
 
-func newQuerier(stmt *sql.Stmt, tableName string) *querier {
+func newQuerier(stmt *sql.Stmt, databaseID int, tableName string) *querier {
 	return &querier{
-		stmt:      stmt,
-		tableName: tableName,
+		stmt:       stmt,
+		tableName:  tableName,
+		databaseID: databaseID,
 	}
 }
 
@@ -147,6 +175,7 @@ func (q *querier) start() {
 					continue
 				}
 				response.TableName = q.tableName
+				response.DatabaseID = q.databaseID
 				unitWork.resp <- response
 
 			case <-q.quit:
