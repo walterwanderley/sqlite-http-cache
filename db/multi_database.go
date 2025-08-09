@@ -8,7 +8,6 @@ import (
 )
 
 type MultiDatabaseRepository struct {
-	dbs                    []*sql.DB
 	concurrentRepositories []*concurrentRepository
 	// roundRobin strategy to choose one writer
 	currentWriter int
@@ -30,7 +29,6 @@ func NewMultiDatabaseRepository(dbs []*sql.DB) (*MultiDatabaseRepository, error)
 		concurrentRepositories[i] = cr
 	}
 	return &MultiDatabaseRepository{
-		dbs:                    dbs,
 		concurrentRepositories: concurrentRepositories,
 	}, nil
 }
