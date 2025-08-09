@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/walterwanderley/sqlite-http-cache/db"
 )
@@ -17,9 +18,10 @@ type readWriteTransportQuerier interface {
 type readWriteTransport struct {
 	base    http.RoundTripper
 	querier readWriteTransportQuerier
+	ttl     time.Duration
 }
 
-func newReadWriteTransport(base http.RoundTripper, sqlDB *sql.DB, tableNames ...string) (*readWriteTransport, error) {
+func newReadWriteTransport(base http.RoundTripper, sqlDB *sql.DB, ttl time.Duration, tableNames ...string) (*readWriteTransport, error) {
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone()
 	}
@@ -30,6 +32,7 @@ func newReadWriteTransport(base http.RoundTripper, sqlDB *sql.DB, tableNames ...
 	return &readWriteTransport{
 		base:    base,
 		querier: querier,
+		ttl:     ttl,
 	}, nil
 }
 
@@ -39,19 +42,23 @@ func (t *readWriteTransport) RoundTrip(req *http.Request) (*http.Response, error
 	}
 
 	url := req.URL.String()
-	resp, err := t.querier.FindByURL(req.Context(), url)
-	if err != nil {
+	respDB, err := t.querier.FindByURL(req.Context(), url)
+	if err != nil || time.Since(respDB.Timestamp) > t.ttl {
 		resp, err := t.base.RoundTrip(req)
 		if err == nil {
-
+			newRespDB, err := db.HttpToResponse(resp)
+			if err == nil {
+				newRespDB.TableName = respDB.TableName
+				t.querier.Write(context.Background(), url, newRespDB)
+			}
 		}
 		return resp, err
 	}
 
 	return &http.Response{
-		StatusCode: resp.Status,
-		Body:       resp.Body,
-		Header:     http.Header(resp.Headers),
+		StatusCode: respDB.Status,
+		Body:       respDB.Body,
+		Header:     http.Header(respDB.Headers),
 	}, nil
 
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/walterwanderley/sqlite-http-cache/db"
 )
@@ -18,9 +19,10 @@ type readOnlyTransportQuerier interface {
 type readOnlyTransport struct {
 	base    http.RoundTripper
 	querier readOnlyTransportQuerier
+	ttl     time.Duration
 }
 
-func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, tableNames ...string) (*readOnlyTransport, error) {
+func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, ttl time.Duration, tableNames ...string) (*readOnlyTransport, error) {
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone()
 	}
@@ -31,6 +33,7 @@ func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, tableNames ...s
 	return &readOnlyTransport{
 		base:    base,
 		querier: querier,
+		ttl:     ttl,
 	}, nil
 }
 
@@ -41,7 +44,7 @@ func (t *readOnlyTransport) RoundTrip(req *http.Request) (*http.Response, error)
 
 	url := req.URL.String()
 	resp, err := t.querier.FindByURL(req.Context(), url)
-	if err != nil {
+	if err != nil || time.Since(resp.Timestamp) > t.ttl {
 		return t.base.RoundTrip(req)
 	}
 

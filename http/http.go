@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/walterwanderley/sqlite-http-cache/http/internal"
 )
@@ -20,6 +21,7 @@ type Config struct {
 	DB       *sql.DB
 	Tables   []string
 	ReadOnly bool
+	TTL      time.Duration
 }
 
 func (c Config) Client(ctx context.Context) (*http.Client, io.Closer, error) {
@@ -29,9 +31,9 @@ func (c Config) Client(ctx context.Context) (*http.Client, io.Closer, error) {
 		err error
 	)
 	if c.ReadOnly {
-		t, err = newReadOnlyTransport(cc.Transport, c.DB, c.Tables...)
+		t, err = newReadOnlyTransport(cc.Transport, c.DB, c.TTL, c.Tables...)
 	} else {
-		t, err = newReadWriteTransport(cc.Transport, c.DB, c.Tables...)
+		t, err = newReadWriteTransport(cc.Transport, c.DB, c.TTL, c.Tables...)
 	}
 	if err != nil {
 		return nil, nil, err
