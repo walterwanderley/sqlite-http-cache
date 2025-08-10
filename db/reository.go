@@ -22,7 +22,7 @@ type Repository interface {
 type Response struct {
 	Status     int
 	Body       io.ReadCloser
-	Headers    map[string][]string
+	Header     map[string][]string
 	Timestamp  time.Time
 	DatabaseID int
 	TableName  string
@@ -78,9 +78,9 @@ func HttpToResponse(resp *http.Response) (*Response, error) {
 	resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	return &Response{
-		Status:  resp.StatusCode,
-		Headers: resp.Header,
-		Body:    io.NopCloser(bytes.NewReader(bodyBytes)),
+		Status: resp.StatusCode,
+		Header: resp.Header,
+		Body:   io.NopCloser(bytes.NewReader(bodyBytes)),
 	}, nil
 }
 
@@ -108,7 +108,7 @@ func rowToResponse(row *sql.Row) (*Response, error) {
 	return &Response{
 		Status:    status,
 		Body:      io.NopCloser(strings.NewReader(body)),
-		Headers:   headersMap,
+		Header:    headersMap,
 		Timestamp: timestamp,
 	}, nil
 }
@@ -131,7 +131,7 @@ func execWriter(ctx context.Context, stmt *sql.Stmt, url string, resp *Response)
 	bodyStr := string(body)
 
 	var headersBuf bytes.Buffer
-	json.NewEncoder(&headersBuf).Encode(resp.Headers)
+	json.NewEncoder(&headersBuf).Encode(resp.Header)
 	headers := headersBuf.String()
 
 	_, err = stmt.ExecContext(ctx,

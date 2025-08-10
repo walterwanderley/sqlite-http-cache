@@ -38,7 +38,7 @@ func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 		return r, nil
 	}
 
-	if !readOnly && uint(time.Since(resp.Timestamp).Seconds()) > ttl {
+	if !readOnly && ttl > 0 && uint(time.Since(resp.Timestamp).Seconds()) > ttl {
 		// data is too old, tell the responseHandler to save the new data
 		ctx.UserData = fmt.Sprintf("%s:%d", resp.TableName, resp.DatabaseID)
 		return r, nil
@@ -47,9 +47,17 @@ func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 		slog.Info("serving from database", "url", url, "status", resp.Status, "timestamp", resp.Timestamp.Format(time.RFC3339))
 	}
 
+	header := http.Header(resp.Header)
+	if date := header.Get("Date"); date != "" {
+		d, err := time.Parse(time.RFC1123, date)
+		if err == nil {
+			header.Set("Age", fmt.Sprint(int(time.Since(d).Seconds())))
+		}
+	}
+
 	return r, &http.Response{
 		StatusCode: resp.Status,
 		Body:       resp.Body,
-		Header:     http.Header(resp.Headers),
+		Header:     header,
 	}
 }

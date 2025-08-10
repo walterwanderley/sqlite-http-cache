@@ -58,7 +58,7 @@ func (t *readWriteTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return &http.Response{
 		StatusCode: respDB.Status,
 		Body:       respDB.Body,
-		Header:     http.Header(respDB.Headers),
+		Header:     http.Header(respDB.Header),
 	}, nil
 
 }

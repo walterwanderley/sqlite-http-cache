@@ -51,7 +51,7 @@ func (t *readOnlyTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return &http.Response{
 		StatusCode: resp.Status,
 		Body:       resp.Body,
-		Header:     http.Header(resp.Headers),
+		Header:     http.Header(resp.Header),
 	}, nil
 
 }
