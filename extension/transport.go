@@ -7,23 +7,23 @@ import (
 
 type transport struct {
 	http.RoundTripper
-	Headers map[string]string
+	Header map[string]string
 }
 
-func newTransport(tlsConfig *tls.Config, headers map[string]string) http.RoundTripper {
+func newTransport(tlsConfig *tls.Config, header map[string]string) http.RoundTripper {
 	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
 	baseTransport.TLSClientConfig = tlsConfig
-	if len(headers) == 0 {
+	if len(header) == 0 {
 		return baseTransport
 	}
 	return &transport{
-		baseTransport, headers,
+		baseTransport, header,
 	}
 }
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req2 := req.Clone(req.Context())
-	for k, v := range t.Headers {
+	for k, v := range t.Header {
 		req2.Header.Set(k, v)
 	}
 	return t.RoundTripper.RoundTrip(req2)

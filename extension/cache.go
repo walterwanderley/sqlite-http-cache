@@ -34,7 +34,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		timeout           time.Duration
 		insecure          bool
 		ignoreStatusError bool
-		headers           = make(map[string]string)
+		header            = make(map[string]string)
 		credentials       clientcredentials.Config
 		certFilePath      string
 		certKeyFilePath   string
@@ -87,7 +87,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 			case config.CertCAFile:
 				caFilePath = v
 			default:
-				headers[k] = v
+				header[k] = v
 			}
 		}
 	}
@@ -103,7 +103,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		url TEXT PRIMARY KEY,
 		status INTEGER,
 		body BLOB,
-		headers JSONB,
+		header JSONB,
 		timestamp DATETIME
 		)`, responseTableName), nil)
 	if err != nil {
@@ -136,7 +136,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 
 	client := &http.Client{
 		Timeout:   timeout,
-		Transport: newTransport(&tlsConfig, headers),
+		Transport: newTransport(&tlsConfig, header),
 	}
 
 	if credentials.TokenURL != "" && credentials.ClientID != "" {

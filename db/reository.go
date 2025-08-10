@@ -58,7 +58,7 @@ func CreateResponseTables(db *sql.DB, tableNames ...string) error {
 		url TEXT PRIMARY KEY,
 		status INTEGER,
 		body BLOB,
-		headers JSONB,
+		header JSONB,
 		timestamp DATETIME
 		)`, tableName)
 		_, err := db.Exec(query)
@@ -85,7 +85,7 @@ func HttpToResponse(resp *http.Response) (*Response, error) {
 }
 
 func getReaderQuery(tableName string) string {
-	return fmt.Sprintf("SELECT status, body, headers, timestamp FROM %s WHERE url = ?", tableName)
+	return fmt.Sprintf("SELECT status, body, header, timestamp FROM %s WHERE url = ?", tableName)
 }
 
 func rowToResponse(row *sql.Row) (*Response, error) {
@@ -95,31 +95,31 @@ func rowToResponse(row *sql.Row) (*Response, error) {
 	var (
 		status    int
 		body      string
-		headers   string
+		header    string
 		timestamp time.Time
 	)
-	err := row.Scan(&status, &body, &headers, &timestamp)
+	err := row.Scan(&status, &body, &header, &timestamp)
 	if err != nil {
 		return nil, fmt.Errorf("scan response row: %w", err)
 	}
-	var headersMap map[string][]string
-	json.Unmarshal([]byte(headers), &headersMap)
+	var headerMap map[string][]string
+	json.Unmarshal([]byte(header), &headerMap)
 
 	return &Response{
 		Status:    status,
 		Body:      io.NopCloser(strings.NewReader(body)),
-		Header:    headersMap,
+		Header:    headerMap,
 		Timestamp: timestamp,
 	}, nil
 }
 
 func getWriterQuery(tableName string) string {
-	return fmt.Sprintf(`INSERT INTO %s(url, status, body, headers, timestamp) 
+	return fmt.Sprintf(`INSERT INTO %s(url, status, body, header, timestamp) 
 	VALUES(?, ?, ?, ?, DATETIME('now'))
 	ON CONFLICT(url) DO UPDATE SET 
 	status = ?,
 	body = ?,
-	headers = ?,
+	header = ?,
 	timestamp = DATETIME('now')`, tableName)
 }
 
@@ -130,14 +130,14 @@ func execWriter(ctx context.Context, stmt *sql.Stmt, url string, resp *Response)
 	}
 	bodyStr := string(body)
 
-	var headersBuf bytes.Buffer
-	json.NewEncoder(&headersBuf).Encode(resp.Header)
-	headers := headersBuf.String()
+	var headerBuf bytes.Buffer
+	json.NewEncoder(&headerBuf).Encode(resp.Header)
+	header := headerBuf.String()
 
 	_, err = stmt.ExecContext(ctx,
-		url, resp.Status, bodyStr, headers,
+		url, resp.Status, bodyStr, header,
 		// On Conflict
-		resp.Status, bodyStr, headers)
+		resp.Status, bodyStr, header)
 
 	if err != nil {
 		return fmt.Errorf("store response: %w", err)

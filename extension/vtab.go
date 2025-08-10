@@ -22,12 +22,12 @@ type RequestVirtualTable struct {
 }
 
 func NewRequestVirtualTable(virtualTableName string, client *http.Client, ignoreStatusError bool, responseTableName string, conn *sqlite.Conn) (*RequestVirtualTable, error) {
-	stmt, _, err := conn.Prepare(fmt.Sprintf(`INSERT INTO %s(url, status, body, headers, timestamp) 
+	stmt, _, err := conn.Prepare(fmt.Sprintf(`INSERT INTO %s(url, status, body, header, timestamp) 
 		VALUES(?, ?, ?, ?, DATETIME('now'))
 		ON CONFLICT(url) DO UPDATE SET 
 		status = ?,
 		body = ?,
-		headers = ?,
+		header = ?,
 		timestamp = DATETIME('now')`, responseTableName))
 	if err != nil {
 		return nil, err
@@ -79,9 +79,9 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 	body := string(bodyBytes)
 	status := int64(resp.StatusCode)
 
-	var headersBuf bytes.Buffer
-	json.NewEncoder(&headersBuf).Encode(resp.Header)
-	headers := headersBuf.String()
+	var headerBuf bytes.Buffer
+	json.NewEncoder(&headerBuf).Encode(resp.Header)
+	header := headerBuf.String()
 
 	vt.mu.Lock()
 	err = vt.stmt.Reset()
@@ -91,11 +91,11 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 	vt.stmt.BindText(1, url)
 	vt.stmt.BindInt64(2, status)
 	vt.stmt.BindText(3, body)
-	vt.stmt.BindText(4, headers)
+	vt.stmt.BindText(4, header)
 	//ON CONFLICT
 	vt.stmt.BindInt64(5, status)
 	vt.stmt.BindText(6, body)
-	vt.stmt.BindText(7, headers)
+	vt.stmt.BindText(7, header)
 	_, err = vt.stmt.Step()
 	vt.mu.Unlock()
 	if err != nil {

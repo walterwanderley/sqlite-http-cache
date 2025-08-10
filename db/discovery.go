@@ -54,6 +54,6 @@ func isResponseTable(db *sql.DB, table string) (bool, error) {
 	}
 
 	return slices.Contains(columns, "url") && slices.Contains(columns, "status") &&
-		slices.Contains(columns, "body") && slices.Contains(columns, "headers") && slices.Contains(columns, "timestamp"), nil
+		slices.Contains(columns, "body") && slices.Contains(columns, "header") && slices.Contains(columns, "timestamp"), nil
 
 }
