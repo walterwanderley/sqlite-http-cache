@@ -19,7 +19,10 @@ type requestQuerier interface {
 }
 
 type requestHandler struct {
-	querier requestQuerier
+	verbose  bool
+	ttl      uint
+	readOnly bool
+	querier  requestQuerier
 }
 
 func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
@@ -38,12 +41,12 @@ func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 		return r, nil
 	}
 
-	if !readOnly && ttl > 0 && uint(time.Since(resp.Timestamp).Seconds()) > ttl {
+	if !h.readOnly && h.ttl > 0 && uint(time.Since(resp.Timestamp).Seconds()) > h.ttl {
 		// data is too old, tell the responseHandler to save the new data
 		ctx.UserData = fmt.Sprintf("%s:%d", resp.TableName, resp.DatabaseID)
 		return r, nil
 	}
-	if verbose {
+	if h.verbose {
 		slog.Info("serving from database", "url", url, "status", resp.Status, "timestamp", resp.Timestamp.Format(time.RFC3339))
 	}
 

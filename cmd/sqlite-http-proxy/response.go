@@ -16,12 +16,13 @@ type responseWriter interface {
 }
 
 type responseHandler struct {
-	writer responseWriter
+	writer  responseWriter
+	verbose bool
 }
 
 func (h *responseHandler) Handle(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	if ctx.UserData != nil {
-		if verbose {
+		if h.verbose {
 			slog.Info("recording response", "url", ctx.Req.URL.String(), "status", resp.StatusCode)
 		}
 		responseDB, err := db.HttpToResponse(resp)
