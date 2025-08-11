@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,9 +18,13 @@ import (
 	"golang.org/x/oauth2/clientcredentials"
 
 	"github.com/walterwanderley/sqlite-http-cache/config"
+	"github.com/walterwanderley/sqlite-http-cache/db"
 )
 
-var tableNameValid = regexp.MustCompilePOSIX("^[a-zA-Z_][a-zA-Z0-9_.]*$").MatchString
+var (
+	defaultStatusCodes = []int{200, 301, 404}
+	tableNameValid     = regexp.MustCompilePOSIX("^[a-zA-Z_][a-zA-Z0-9_.]*$").MatchString
+)
 
 type CacheModule struct {
 }
@@ -33,7 +38,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		responseTableName string
 		timeout           time.Duration
 		insecure          bool
-		ignoreStatusError bool
+		statusCodes       = slices.Clone(defaultStatusCodes)
 		header            = make(map[string]string)
 		credentials       clientcredentials.Config
 		certFilePath      string
@@ -63,10 +68,21 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 				if err != nil {
 					return nil, fmt.Errorf("invalid %q option: %v", k, err)
 				}
-			case config.IgnoreStatusError:
-				ignoreStatusError, err = strconv.ParseBool(v)
-				if err != nil {
-					return nil, fmt.Errorf("invalid %q option: %v", k, err)
+			case config.StatusCode:
+				statusCodesParam := make([]int, 0)
+				for _, statusCodeStr := range strings.Split(v, ",") {
+					statusCodeStr = strings.TrimSpace(statusCodeStr)
+					if len(statusCodeStr) == 0 {
+						continue
+					}
+					statusCode, err := strconv.Atoi(statusCodeStr)
+					if err != nil {
+						return nil, fmt.Errorf("invalid %q option, use a comma-separated list of integers", k)
+					}
+					statusCodesParam = append(statusCodesParam, statusCode)
+				}
+				if len(statusCodesParam) > 0 {
+					statusCodes = statusCodesParam
 				}
 			case config.ResponseTableName:
 				if tableNameValid(v) {
@@ -99,13 +115,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		return nil, fmt.Errorf("use different names on virtual table and response table")
 	}
 
-	err = conn.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
-		url TEXT PRIMARY KEY,
-		status INTEGER,
-		body BLOB,
-		header JSONB,
-		timestamp DATETIME
-		)`, responseTableName), nil)
+	err = conn.Exec(db.CreateResponseTableQuery(responseTableName), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +154,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		client = credentials.Client(ctx)
 	}
 
-	vtab, err := NewRequestVirtualTable(tableName, client, ignoreStatusError, responseTableName, conn)
+	vtab, err := NewRequestVirtualTable(tableName, client, statusCodes, responseTableName, conn)
 	if err != nil {
 		return nil, err
 	}

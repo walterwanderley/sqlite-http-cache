@@ -15,11 +15,11 @@ type singleRepository struct {
 }
 
 func newSingleRepository(db *sql.DB, tableName string) (*singleRepository, error) {
-	readStmt, err := db.Prepare(getReaderQuery(tableName))
+	readStmt, err := db.Prepare(readerQuery(tableName))
 	if err != nil {
 		return nil, fmt.Errorf("prepare reader query for %q: %w", tableName, err)
 	}
-	writeStmt, err := db.Prepare(getWriterQuery(tableName))
+	writeStmt, err := db.Prepare(WriterQuery(tableName))
 	if err != nil {
 		return nil, fmt.Errorf("prepare writer query for %q: %w", tableName, err)
 	}

@@ -28,10 +28,11 @@ func main() {
 	allowHTTP2 := fs.BoolLong("h2", "Allow HTTP2")
 	ttl := fs.UintLong("ttl", 0, "Time to Live in seconds (0 is infinite time)")
 	responseTables := fs.StringListLong("response-table", "List of database tables used to store response data")
-	forceCreateTables := fs.BoolLong("force-create-tables", "Force create response tables if not exists")
 	caCert := fs.StringLong("ca-cert", "", "Path to CA Certificate file (required to HTTPS proxy)")
 	caCertKey := fs.StringLong("ca-cert-key", "", "Path to CA Certificate Key file (required to HTTPS proxy)")
 	readOnly := fs.BoolLong("ro", "Read Only mode. Do not store new HTTP responses")
+	rfc9111 := fs.BoolLong("rfc9111", "Use RFC9111 spec")
+	shared := fs.BoolLong("shared", "Enable shared cache mode")
 	_ = fs.String('c', "config", "", "config file (optional)")
 
 	if err := ff.Parse(fs, os.Args[1:],
@@ -49,8 +50,8 @@ func main() {
 	}
 
 	if *verbose {
-		fmt.Printf("Using options: port=%d db-params=%s, h2=%v, ttl=%d, response-tables=%v, force-create-tables=%v, ca-cert=%s, ca-cert-key=%s, read-only=%v\n",
-			*port, *dbParams, *allowHTTP2, *ttl, *responseTables, *forceCreateTables, *caCert, *caCertKey, *readOnly)
+		fmt.Printf("Using options: port=%d db-params=%s, h2=%v, ttl=%d, response-tables=%v, ca-cert=%s, ca-cert-key=%s, read-only=%v\n",
+			*port, *dbParams, *allowHTTP2, *ttl, *responseTables, *caCert, *caCertKey, *readOnly)
 	}
 
 	dbs := make([]*sql.DB, 0)
@@ -99,12 +100,11 @@ func main() {
 			}
 		} else {
 			tableList = *responseTables
-			if *forceCreateTables {
-				err := db.CreateResponseTables(sqlDB, tableList...)
-				if err != nil {
-					log.Fatalf("force create tables on DB %q: %v", dsn, err)
-				}
+			err := db.CreateResponseTables(sqlDB, tableList...)
+			if err != nil {
+				log.Fatalf("force create tables on DB %q: %v", dsn, err)
 			}
+
 		}
 	}
 	if len(dbs) == 1 {
@@ -140,17 +140,35 @@ func main() {
 		proxy.Logger.Printf("INFO: Starting HTTP Proxy...")
 	}
 
-	proxy.OnRequest().Do(&requestHandler{
-		querier:  repository,
-		verbose:  *verbose,
-		ttl:      *ttl,
-		readOnly: *readOnly,
-	})
-	if !*readOnly {
-		proxy.OnResponse().Do(&responseHandler{
-			writer:  repository,
-			verbose: *verbose,
+	if *rfc9111 {
+		proxy.OnRequest().Do(&requestRFC9111Handler{
+			shared:   *shared,
+			querier:  repository,
+			verbose:  *verbose,
+			readOnly: *readOnly,
 		})
+	} else {
+		proxy.OnRequest().Do(&requestHandler{
+			querier:  repository,
+			verbose:  *verbose,
+			ttl:      *ttl,
+			readOnly: *readOnly,
+		})
+	}
+	if !*readOnly {
+		if *rfc9111 {
+			proxy.OnResponse().Do(&responseRFC9111Handler{
+				shared:  *shared,
+				writer:  repository,
+				verbose: *verbose,
+			})
+		} else {
+			proxy.OnResponse().Do(&responseHandler{
+				writer:  repository,
+				verbose: *verbose,
+			})
+		}
+
 	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))

@@ -4,8 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"strings"
+	"time"
 
 	"github.com/elazarl/goproxy"
 	"github.com/walterwanderley/sqlite-http-cache/db"
@@ -21,7 +20,8 @@ type responseHandler struct {
 }
 
 func (h *responseHandler) Handle(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-	if ctx.UserData != nil {
+	ud, ok := ctx.UserData.(userData)
+	if ok {
 		if h.verbose {
 			slog.Info("recording response", "url", ctx.Req.URL.String(), "status", resp.StatusCode)
 		}
@@ -30,12 +30,10 @@ func (h *responseHandler) Handle(resp *http.Response, ctx *goproxy.ProxyCtx) *ht
 			slog.Error("adapter response body", "error", err)
 		} else {
 			go func() {
-				userData := ctx.UserData.(string)
-				tableName, databaseID, ok := strings.Cut(userData, ":")
-				if ok {
-					responseDB.DatabaseID, _ = strconv.Atoi(databaseID)
-				}
-				responseDB.TableName = tableName
+				responseDB.RequestTime = ud.requestTime
+				responseDB.ResponseTime = time.Now()
+				responseDB.DatabaseID = ud.databaseID
+				responseDB.TableName = ud.tableName
 				err := h.writer.Write(context.Background(), ctx.Req.URL.String(), responseDB)
 				if err != nil {
 					slog.Error("recording response", "error", err, "url", ctx.Req.URL.String(), "status", resp.StatusCode)

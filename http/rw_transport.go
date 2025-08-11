@@ -43,7 +43,7 @@ func (t *readWriteTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 	url := req.URL.String()
 	respDB, err := t.querier.FindByURL(req.Context(), url)
-	if err != nil || (t.ttl > 0 && time.Since(respDB.Timestamp) > t.ttl) {
+	if err != nil || (t.ttl > 0 && time.Since(respDB.ResponseTime) > t.ttl) {
 		resp, err := t.base.RoundTrip(req)
 		if err == nil {
 			newRespDB, err := db.HttpToResponse(resp)

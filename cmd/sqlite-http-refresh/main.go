@@ -24,11 +24,13 @@ var (
 	interval *time.Duration
 	ttl      *uint
 	matchURL *string
+	rfc9111  *bool
+	shared   *bool
 
-	timeout           *uint
-	insecure          *bool
-	ignoreStatusError *bool
-	responseTables    *[]string
+	timeout        *uint
+	insecure       *bool
+	statusCodes    *[]string
+	responseTables *[]string
 
 	oauth2ClientID     *string
 	oauth2ClientSecret *string
@@ -43,12 +45,14 @@ func main() {
 	fs := ff.NewFlagSet("sqlite-http-refresh")
 	// Scheduler strategy
 	interval = fs.DurationLong("sync-interval", 30*time.Second, "Interval to wait for check expired data")
-	ttl = fs.UintLong("ttl", 30*60, "Time to Live in seconds")
+	ttl = fs.UintLong("ttl", 30*60, "Time to Live in seconds. Fallback if not use RFC9111")
 	matchURL = fs.StringLong("match-url", "%", "Filter URLs (SQL syntax)")
+	rfc9111 = fs.BoolLong("rfc9111", "Refresh data based on RFC9111")
+	shared = fs.BoolLong("shared", "Enable shared cache mode to RFC9111")
 	// Request/Store config
 	timeout = fs.UintLong("timeout", 30*1000, "Timeout in milliseconds")
 	insecure = fs.BoolLong("insecure", "Disable TLS verification")
-	ignoreStatusError = fs.BoolLong("ignore-status-error", "ignore responses with status code != 2xx")
+	statusCodes = fs.StringListLong("status-code", "List of status code to store. An empty list will persist all responses")
 	responseTables = fs.StringListLong("response-table", "List of database tables used to store response data")
 	// Oauth2 Client Credentials
 	oauth2ClientID = fs.StringLong("oauth2-client-id", "", "Oauth2 Client ID")
@@ -92,6 +96,22 @@ func main() {
 		tableList = *responseTables
 	}
 
+	var (
+		fn            dataRefresher
+		queryTemplate string
+	)
+	if *rfc9111 {
+		fn = refreshDataRFC9111
+		queryTemplate = fmt.Sprintf(`INSERT INTO temp.%%s_refresh(url) 
+			SELECT url FROM %%s
+			WHERE url LIKE ? AND cachexpired(header, response_time, %s)`, fmt.Sprint(*shared))
+	} else {
+		fn = refreshDataTTL
+		queryTemplate = `INSERT INTO temp.%s_refresh(url) 
+		SELECT url FROM %s
+		WHERE url LIKE ? AND unixepoch() - unixepoch(response_time) > ?`
+	}
+
 	stmts := make(map[string]*sql.Stmt)
 	for _, responseTableName := range tableList {
 		_, err = sqlDB.Exec(fmt.Sprintf("CREATE VIRTUAL TABLE temp.%s_refresh USING http_request(%s)", responseTableName, opts(responseTableName)))
@@ -99,9 +119,7 @@ func main() {
 			log.Fatalf("error creating virtual table: %v", err)
 		}
 
-		stmt, err := sqlDB.Prepare(fmt.Sprintf(`INSERT INTO temp.%s_refresh(url) 
-	SELECT url FROM %s
-	WHERE url LIKE ? AND unixepoch() - unixepoch(timestamp) > ?`, responseTableName, responseTableName))
+		stmt, err := sqlDB.Prepare(fmt.Sprintf(queryTemplate, responseTableName, responseTableName))
 		if err != nil {
 			log.Fatalf("error preparing statement: %v", err)
 		}
@@ -112,7 +130,7 @@ func main() {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-	refreshData(stmts)
+	fn(stmts)
 	if *interval == 0 {
 		return
 	}
@@ -125,15 +143,32 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			refreshData(stmts)
+			fn(stmts)
 		case <-done:
 			return
 		}
 	}
 }
 
-func refreshData(stmts map[string]*sql.Stmt) {
-	slog.Info("starting data verification")
+type dataRefresher func(stmts map[string]*sql.Stmt)
+
+func refreshDataRFC9111(stmts map[string]*sql.Stmt) {
+	slog.Info("starting data verification using RFC9111 strategy")
+
+	for tableName, stmt := range stmts {
+		res, err := stmt.Exec(*matchURL)
+		if err != nil {
+			slog.Error("error refreshing data", "error", err, "table", tableName)
+			continue
+		}
+
+		rowsAffected, _ := res.RowsAffected()
+		slog.Info("verification finished", "rows_checked", rowsAffected, "table", tableName)
+	}
+}
+
+func refreshDataTTL(stmts map[string]*sql.Stmt) {
+	slog.Info("starting data verification using TTL strategy")
 
 	for tableName, stmt := range stmts {
 		res, err := stmt.Exec(*matchURL, *ttl)
@@ -143,7 +178,7 @@ func refreshData(stmts map[string]*sql.Stmt) {
 		}
 
 		rowsAffected, _ := res.RowsAffected()
-		slog.Info("verification finished", "rows_affected", rowsAffected, "table", tableName)
+		slog.Info("verification finished", "rows_checked", rowsAffected, "table", tableName)
 	}
 }
 
@@ -151,7 +186,9 @@ func opts(responseTableName string) string {
 	opts := make([]string, 0)
 	opts = append(opts, fmt.Sprintf("%s='%d'", config.Timeout, *timeout))
 	opts = append(opts, fmt.Sprintf("%s='%v'", config.Insecure, *insecure))
-	opts = append(opts, fmt.Sprintf("%s='%v'", config.IgnoreStatusError, *ignoreStatusError))
+	if statusCodes != nil {
+		opts = append(opts, fmt.Sprintf("%s='%v'", config.StatusCode, strings.Join(*statusCodes, ",")))
+	}
 	opts = append(opts, fmt.Sprintf("%s='%s'", config.ResponseTableName, responseTableName))
 	opts = append(opts, fmt.Sprintf("%s='%s'", config.Oauth2ClientID, *oauth2ClientID))
 	opts = append(opts, fmt.Sprintf("%s='%s'", config.Oauth2ClientSecret, *oauth2ClientSecret))

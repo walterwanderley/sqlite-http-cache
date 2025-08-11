@@ -6,14 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sync"
+	"time"
 
 	"github.com/walterwanderley/sqlite"
+
+	"github.com/walterwanderley/sqlite-http-cache/db"
 )
 
 type RequestVirtualTable struct {
 	client            *http.Client
-	ignoreStatusError bool
+	statusCodes       []int
 	tableName         string
 	responseTableName string
 	conn              *sqlite.Conn
@@ -21,21 +25,15 @@ type RequestVirtualTable struct {
 	mu                sync.Mutex
 }
 
-func NewRequestVirtualTable(virtualTableName string, client *http.Client, ignoreStatusError bool, responseTableName string, conn *sqlite.Conn) (*RequestVirtualTable, error) {
-	stmt, _, err := conn.Prepare(fmt.Sprintf(`INSERT INTO %s(url, status, body, header, timestamp) 
-		VALUES(?, ?, ?, ?, DATETIME('now'))
-		ON CONFLICT(url) DO UPDATE SET 
-		status = ?,
-		body = ?,
-		header = ?,
-		timestamp = DATETIME('now')`, responseTableName))
+func NewRequestVirtualTable(virtualTableName string, client *http.Client, statusCodes []int, responseTableName string, conn *sqlite.Conn) (*RequestVirtualTable, error) {
+	stmt, _, err := conn.Prepare(db.WriterQuery(responseTableName))
 	if err != nil {
 		return nil, err
 	}
 
 	return &RequestVirtualTable{
 		client:            client,
-		ignoreStatusError: ignoreStatusError,
+		statusCodes:       statusCodes,
 		tableName:         virtualTableName,
 		responseTableName: responseTableName,
 		conn:              conn,
@@ -61,14 +59,19 @@ func (vt *RequestVirtualTable) Destroy() error {
 
 func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 	url := values[0].Text()
+	requestTime := time.Now().Format(time.RFC3339Nano)
 	resp, err := vt.client.Get(url)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 
-	if vt.ignoreStatusError && resp.StatusCode/100 != 2 {
+	if len(vt.statusCodes) > 0 && !slices.Contains(vt.statusCodes, resp.StatusCode) {
 		return 0, nil
+	}
+
+	if resp.Header.Get("Date") == "" {
+		resp.Header.Set("Date", time.Now().Format(time.RFC1123))
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
@@ -82,7 +85,7 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 	var headerBuf bytes.Buffer
 	json.NewEncoder(&headerBuf).Encode(resp.Header)
 	header := headerBuf.String()
-
+	responseTime := time.Now().Format(time.RFC3339Nano)
 	vt.mu.Lock()
 	err = vt.stmt.Reset()
 	if err != nil {
@@ -92,10 +95,14 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 	vt.stmt.BindInt64(2, status)
 	vt.stmt.BindText(3, body)
 	vt.stmt.BindText(4, header)
+	vt.stmt.BindText(5, requestTime)
+	vt.stmt.BindText(6, responseTime)
 	//ON CONFLICT
-	vt.stmt.BindInt64(5, status)
-	vt.stmt.BindText(6, body)
-	vt.stmt.BindText(7, header)
+	vt.stmt.BindInt64(7, status)
+	vt.stmt.BindText(8, body)
+	vt.stmt.BindText(9, header)
+	vt.stmt.BindText(10, requestTime)
+	vt.stmt.BindText(11, responseTime)
 	_, err = vt.stmt.Step()
 	vt.mu.Unlock()
 	if err != nil {

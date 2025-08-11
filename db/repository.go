@@ -20,12 +20,13 @@ type Repository interface {
 }
 
 type Response struct {
-	Status     int
-	Body       io.ReadCloser
-	Header     map[string][]string
-	Timestamp  time.Time
-	DatabaseID int
-	TableName  string
+	Status       int
+	Body         io.ReadCloser
+	Header       map[string][]string
+	RequestTime  time.Time
+	ResponseTime time.Time
+	DatabaseID   int
+	TableName    string
 }
 
 func NewRepository(db *sql.DB, tableNames ...string) (Repository, error) {
@@ -47,6 +48,17 @@ func NewRepository(db *sql.DB, tableNames ...string) (Repository, error) {
 	return newConcurrentRepository(db, 0, tableNames...)
 }
 
+func CreateResponseTableQuery(tableName string) string {
+	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
+		url TEXT PRIMARY KEY,
+		status INTEGER,
+		body BLOB,
+		header JSONB,
+		request_time DATETIME,
+		response_time DATETIME
+		)`, tableName)
+}
+
 func CreateResponseTables(db *sql.DB, tableNames ...string) error {
 	var tableNameValid = regexp.MustCompilePOSIX("^[a-zA-Z_][a-zA-Z0-9_.]*$").MatchString
 
@@ -54,13 +66,7 @@ func CreateResponseTables(db *sql.DB, tableNames ...string) error {
 		if !tableNameValid(tableName) {
 			return fmt.Errorf("tabe name %q is invalid", tableName)
 		}
-		query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
-		url TEXT PRIMARY KEY,
-		status INTEGER,
-		body BLOB,
-		header JSONB,
-		timestamp DATETIME
-		)`, tableName)
+		query := CreateResponseTableQuery(tableName)
 		_, err := db.Exec(query)
 		if err != nil {
 			return fmt.Errorf("creating table %q: %w", tableName, err)
@@ -84,8 +90,8 @@ func HttpToResponse(resp *http.Response) (*Response, error) {
 	}, nil
 }
 
-func getReaderQuery(tableName string) string {
-	return fmt.Sprintf("SELECT status, body, header, timestamp FROM %s WHERE url = ?", tableName)
+func readerQuery(tableName string) string {
+	return fmt.Sprintf("SELECT status, body, header, request_time, response_time FROM %s WHERE url = ?", tableName)
 }
 
 func rowToResponse(row *sql.Row) (*Response, error) {
@@ -93,12 +99,13 @@ func rowToResponse(row *sql.Row) (*Response, error) {
 		return nil, fmt.Errorf("response row: %w", err)
 	}
 	var (
-		status    int
-		body      string
-		header    string
-		timestamp time.Time
+		status       int
+		body         string
+		header       string
+		requestTime  time.Time
+		responseTime time.Time
 	)
-	err := row.Scan(&status, &body, &header, &timestamp)
+	err := row.Scan(&status, &body, &header, &requestTime, &responseTime)
 	if err != nil {
 		return nil, fmt.Errorf("scan response row: %w", err)
 	}
@@ -106,21 +113,23 @@ func rowToResponse(row *sql.Row) (*Response, error) {
 	json.Unmarshal([]byte(header), &headerMap)
 
 	return &Response{
-		Status:    status,
-		Body:      io.NopCloser(strings.NewReader(body)),
-		Header:    headerMap,
-		Timestamp: timestamp,
+		Status:       status,
+		Body:         io.NopCloser(strings.NewReader(body)),
+		Header:       headerMap,
+		RequestTime:  requestTime,
+		ResponseTime: responseTime,
 	}, nil
 }
 
-func getWriterQuery(tableName string) string {
-	return fmt.Sprintf(`INSERT INTO %s(url, status, body, header, timestamp) 
-	VALUES(?, ?, ?, ?, DATETIME('now'))
+func WriterQuery(tableName string) string {
+	return fmt.Sprintf(`INSERT INTO %s(url, status, body, header, request_time, response_time) 
+	VALUES(?, ?, ?, ?, ?, ?)
 	ON CONFLICT(url) DO UPDATE SET 
 	status = ?,
 	body = ?,
 	header = ?,
-	timestamp = DATETIME('now')`, tableName)
+	request_time = ?,
+	response_time = ?`, tableName)
 }
 
 func execWriter(ctx context.Context, stmt *sql.Stmt, url string, resp *Response) error {
@@ -134,10 +143,13 @@ func execWriter(ctx context.Context, stmt *sql.Stmt, url string, resp *Response)
 	json.NewEncoder(&headerBuf).Encode(resp.Header)
 	header := headerBuf.String()
 
+	formattedRequetTime := resp.RequestTime.Format(time.RFC3339Nano)
+	formattedResponseTime := resp.ResponseTime.Format(time.RFC3339Nano)
+
 	_, err = stmt.ExecContext(ctx,
-		url, resp.Status, bodyStr, header,
+		url, resp.Status, bodyStr, header, formattedRequetTime, formattedResponseTime,
 		// On Conflict
-		resp.Status, bodyStr, header)
+		resp.Status, bodyStr, header, formattedRequetTime, formattedResponseTime)
 
 	if err != nil {
 		return fmt.Errorf("store response: %w", err)

@@ -3,7 +3,7 @@ package config
 const (
 	Timeout            = "timeout"              // timeout in milliseconds
 	Insecure           = "insecure"             // insecure skip TLS validation
-	IgnoreStatusError  = "ignore_status_error"  // do not persist responses if status code != 2xx
+	StatusCode         = "status_code"          // Comma-separated list of HTTP status to persist
 	ResponseTableName  = "response_table"       // table name of the http responses
 	Oauth2ClientID     = "oauth2_client_id"     // oauth2 client credentials flow: cient_id
 	Oauth2ClientSecret = "oauth2_client_secret" // oauth2 client credentials flow: cient_secret

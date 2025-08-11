@@ -20,6 +20,15 @@ func init() {
 		if err := api.CreateModule(config.DefaultVirtualTableName, &CacheModule{}, sqlite.ReadOnly(false)); err != nil {
 			return sqlite.SQLITE_ERROR, err
 		}
+		if err := api.CreateFunction("cacheage", &Age{}); err != nil {
+			return sqlite.SQLITE_ERROR, err
+		}
+		if err := api.CreateFunction("cachelifetime", &FreshnessLifetime{}); err != nil {
+			return sqlite.SQLITE_ERROR, err
+		}
+		if err := api.CreateFunction("cachexpired", &Expired{}); err != nil {
+			return sqlite.SQLITE_ERROR, err
+		}
 		return sqlite.SQLITE_OK, nil
 	})
 	C.sqlite3_auto_extension((*[0]byte)(C.sqlite3_extension_init))

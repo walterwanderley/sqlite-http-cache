@@ -19,11 +19,13 @@ sqlite3
 INSERT INTO temp.http_request VALUES('https://swapi.tech/api/films/1');
 
 # Fetch data from http_response table (created by the extension)
-SELECT * FROM http_response;
-
 SELECT JSON_EXTRACT(body, '$.result.properties.title') AS title,
   JSON_EXTRACT(body, '$.result.properties.release_date') AS release_date 
   FROM http_response;
+
+# Use cacheage, cachelifetime or cachexpired function to check cache validity based on RFC9111
+SELECT url, cacheage(header) AS age, cachelifetime(header, request_time, true) AS lifetime, cachexpired(header, request_time, true) AS expired 
+FROM http_response; 
 ```
 
 ## Configuring
@@ -34,7 +36,7 @@ You can configure the behaviour by passing parameters to a VIRTUAL TABLE.
 |-------|-------------|---------|
 | timeout | Timeout in milliseconds | 0 |
 | insecure | Insecure skip TLS validation | false |
-| ignore_status_error | Don't persist responses if status code != 2xx | false |
+| status_code | Comma-separated list of HTTP status code to persist. Use empty to persist all status | 200,301,404 |
 | response_table | Database table used to store response data | http_response |
 | oauth2_client_id | Oauth2 Client ID | |
 | oauth2_client_secret | Oauth2 Client Secret | |

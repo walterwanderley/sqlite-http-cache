@@ -29,7 +29,7 @@ func newConcurrentRepository(db *sql.DB, databaseID int, tableNames ...string) (
 	queriers := make([]*querier, size)
 	writers := make([]*sql.Stmt, size)
 	for i, tableName := range tableNames {
-		readStmt, err := db.Prepare(getReaderQuery(tableName))
+		readStmt, err := db.Prepare(readerQuery(tableName))
 		if err != nil {
 			return nil, fmt.Errorf("prepare read query for %q: %w", tableName, err)
 		}
@@ -37,7 +37,7 @@ func newConcurrentRepository(db *sql.DB, databaseID int, tableNames ...string) (
 		queriers[i] = q
 		q.start()
 
-		writeStmt, err := db.Prepare(getWriterQuery(tableName))
+		writeStmt, err := db.Prepare(WriterQuery(tableName))
 		if err != nil {
 			return nil, fmt.Errorf("prepare writer query for %q: %w", tableName, err)
 		}

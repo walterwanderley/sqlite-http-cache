@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -11,29 +10,27 @@ import (
 
 	"github.com/elazarl/goproxy"
 
-	"github.com/walterwanderley/sqlite-http-cache/db"
 	cachehttp "github.com/walterwanderley/sqlite-http-cache/http"
 )
 
-type requestQuerier interface {
-	FindByURL(ctx context.Context, url string) (*db.Response, error)
-}
-
-type requestHandler struct {
+type requestRFC9111Handler struct {
+	shared   bool
 	verbose  bool
-	ttl      uint
 	readOnly bool
 	querier  requestQuerier
 }
 
-type userData struct {
-	requestTime time.Time
-	databaseID  int
-	tableName   string
-}
-
-func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func (h *requestRFC9111Handler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	now := time.Now()
 	if r.Method != http.MethodGet {
+		return r, nil
+	}
+
+	cc := cachehttp.ParseCacheControl(r.Header, nil, h.shared)
+	if !cc.Cacheable() {
+		return r, nil
+	}
+	if h.shared && r.Header.Get("Authorization") != "" {
 		return r, nil
 	}
 
@@ -43,20 +40,28 @@ func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 		if !errors.Is(err, sql.ErrNoRows) {
 			slog.Error("database query", "error", err.Error())
 		}
-		// tell the responseHandler to save the new response data
-		ctx.UserData = userData{
-			requestTime: time.Now(),
-			databaseID:  -1,
+
+		if !h.readOnly {
+			// tell the responseHandler to save the new response data
+			ctx.UserData = userData{
+				requestTime: now,
+				databaseID:  -1,
+			}
 		}
 		return r, nil
 	}
 
-	if !h.readOnly && h.ttl > 0 && uint(time.Since(resp.ResponseTime).Seconds()) > h.ttl {
-		// data is too old, tell the responseHandler to save the new data
-		ctx.UserData = userData{
-			requestTime: time.Now(),
-			databaseID:  resp.DatabaseID,
-			tableName:   resp.TableName,
+	respCC := cachehttp.ParseCacheControl(http.Header(resp.Header), &now, h.shared)
+
+	if respCC.Expired() {
+		fmt.Println("AQUIIIII")
+		if !h.readOnly {
+			// data is too old, tell the responseHandler to save the new data
+			ctx.UserData = userData{
+				requestTime: now,
+				databaseID:  resp.DatabaseID,
+				tableName:   resp.TableName,
+			}
 		}
 		return r, nil
 	}
