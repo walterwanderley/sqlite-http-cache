@@ -107,9 +107,12 @@ sqlite-http-refresh file:example.db?_journal=WAL&_sync=NORMAL&_timeout=5000&_txl
 
 - **Cron (Linux/macOS):** You can set up cron jobs to execute a script at specified intervals (e.g., every minute, hour, or day). This script would then connect to your SQLite database and perform the desired INSERT operations.
 
-```sh
-sqlite3 -cmd ".load /usr/lib/httpcache.so" "INSERT INTO temp.http_request SELECT url FROM http_response WHERE unixepoch() - ((julianday(response_time) - 2440587.5) * 86400.0) > 3600;" 
+Example:
+
+```sql
+INSERT INTO temp.http_request SELECT url FROM http_response WHERE unixepoch() - unixepoch(response_time) > :ttl 
 ```
+*ttl is Time to Live in seconds*
 
 - **Task Scheduler (Windows):** Similar to cron, Windows Task Scheduler allows you to schedule tasks, including running scripts or programs that interact with SQLite.
 
