@@ -96,8 +96,8 @@ func main() {
 	}
 
 	for _, dbPath := range fs.GetArgs() {
-		if strings.HasPrefix(dbPath, "file:") {
-			sqlDB, err := sql.Open("libsql", dbPath)
+		if strings.HasPrefix(dbPath, "local:") {
+			sqlDB, err := sql.Open("libsql", "file:"+strings.TrimPrefix(dbPath, "local:"))
 			if err != nil {
 				log.Fatalf("connecting to database %q: %v", dbPath, err)
 			}
