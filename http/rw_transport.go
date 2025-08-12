@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/walterwanderley/sqlite-http-cache/db"
@@ -16,12 +17,13 @@ type readWriteTransportQuerier interface {
 }
 
 type readWriteTransport struct {
-	base    http.RoundTripper
-	querier readWriteTransportQuerier
-	ttl     time.Duration
+	base            http.RoundTripper
+	querier         readWriteTransportQuerier
+	cacheableStatus []int
+	ttl             time.Duration
 }
 
-func newReadWriteTransport(base http.RoundTripper, sqlDB *sql.DB, ttl time.Duration, tableNames ...string) (*readWriteTransport, error) {
+func newReadWriteTransport(base http.RoundTripper, sqlDB *sql.DB, cacheableStatus []int, ttl time.Duration, tableNames ...string) (*readWriteTransport, error) {
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone()
 	}
@@ -30,9 +32,10 @@ func newReadWriteTransport(base http.RoundTripper, sqlDB *sql.DB, ttl time.Durat
 		return nil, fmt.Errorf("creating repository: %w", err)
 	}
 	return &readWriteTransport{
-		base:    base,
-		querier: querier,
-		ttl:     ttl,
+		base:            base,
+		querier:         querier,
+		cacheableStatus: cacheableStatus,
+		ttl:             ttl,
 	}, nil
 }
 
@@ -43,7 +46,8 @@ func (t *readWriteTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 	url := req.URL.String()
 	respDB, err := t.querier.FindByURL(req.Context(), url)
-	if err != nil || (t.ttl > 0 && time.Since(respDB.ResponseTime) > t.ttl) {
+	if err != nil || (t.ttl > 0 && time.Since(respDB.ResponseTime) > t.ttl) ||
+		(len(t.cacheableStatus) > 0 && !slices.Contains(t.cacheableStatus, respDB.Status)) {
 		resp, err := t.base.RoundTrip(req)
 		if err == nil {
 			newRespDB, err := db.HttpToResponse(resp)

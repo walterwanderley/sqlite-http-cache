@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"database/sql"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/elazarl/goproxy"
@@ -14,19 +15,20 @@ import (
 )
 
 type requestRFC9111Handler struct {
-	shared   bool
-	verbose  bool
-	readOnly bool
-	querier  requestQuerier
+	shared          bool
+	cacheableStatus []int
+	ttlFallback     int
+	verbose         bool
+	readOnly        bool
+	querier         RequestQuerier
 }
 
 func (h *requestRFC9111Handler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-	now := time.Now()
 	if r.Method != http.MethodGet {
 		return r, nil
 	}
 
-	cc := cachehttp.ParseCacheControl(r.Header, nil, h.shared)
+	cc := cachehttp.ParseCacheControl(r.Header, nil, nil, h.shared, h.ttlFallback)
 	if !cc.Cacheable() {
 		return r, nil
 	}
@@ -34,6 +36,7 @@ func (h *requestRFC9111Handler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (
 		return r, nil
 	}
 
+	now := time.Now()
 	url := ctx.Req.URL.String()
 	resp, err := h.querier.FindByURL(r.Context(), url)
 	if err != nil {
@@ -51,10 +54,13 @@ func (h *requestRFC9111Handler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (
 		return r, nil
 	}
 
-	respCC := cachehttp.ParseCacheControl(http.Header(resp.Header), &now, h.shared)
+	if !slices.Contains(h.cacheableStatus, resp.Status) {
+		return r, nil
+	}
+
+	respCC := cachehttp.ParseCacheControl(http.Header(resp.Header), &resp.RequestTime, &resp.ResponseTime, h.shared, h.ttlFallback)
 
 	if respCC.Expired() {
-		fmt.Println("AQUIIIII")
 		if !h.readOnly {
 			// data is too old, tell the responseHandler to save the new data
 			ctx.UserData = userData{
@@ -73,8 +79,7 @@ func (h *requestRFC9111Handler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (
 	if header.Get("Date") == "" {
 		header.Set("Date", time.Now().Format(time.RFC1123))
 	}
-	// TODO fix age calc based on RFC 9111
-	if age := cachehttp.Age(header); age != nil {
+	if age := cachehttp.Age(header, resp.RequestTime, resp.ResponseTime); age != nil {
 		header.Set("Age", fmt.Sprint(*age))
 	}
 

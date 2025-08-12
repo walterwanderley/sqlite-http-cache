@@ -22,7 +22,7 @@ import (
 
 var (
 	interval *time.Duration
-	ttl      *uint
+	ttl      *int
 	matchURL *string
 	rfc9111  *bool
 	shared   *bool
@@ -45,14 +45,14 @@ func main() {
 	fs := ff.NewFlagSet("sqlite-http-refresh")
 	// Scheduler strategy
 	interval = fs.DurationLong("sync-interval", 30*time.Second, "Interval to wait for check expired data")
-	ttl = fs.UintLong("ttl", 30*60, "Time to Live in seconds. Fallback if not use RFC9111")
+	ttl = fs.IntLong("ttl", 30*60, "Time to Live in seconds. Fallback if not use RFC9111")
 	matchURL = fs.StringLong("match-url", "%", "Filter URLs (SQL syntax)")
 	rfc9111 = fs.BoolLong("rfc9111", "Refresh data based on RFC9111")
 	shared = fs.BoolLong("shared", "Enable shared cache mode to RFC9111")
 	// Request/Store config
 	timeout = fs.UintLong("timeout", 30*1000, "Timeout in milliseconds")
 	insecure = fs.BoolLong("insecure", "Disable TLS verification")
-	statusCodes = fs.StringListLong("status-code", "List of status code to store. An empty list will persist all responses")
+	statusCodes = fs.StringListLong("status-code", fmt.Sprintf("List of cacheable status code. Defaults to the heuristically cacheable codes: %v", config.DefaultStatusCodes()))
 	responseTables = fs.StringListLong("response-table", "List of database tables used to store response data")
 	// Oauth2 Client Credentials
 	oauth2ClientID = fs.StringLong("oauth2-client-id", "", "Oauth2 Client ID")
@@ -104,7 +104,7 @@ func main() {
 		fn = refreshDataRFC9111
 		queryTemplate = fmt.Sprintf(`INSERT INTO temp.%%s_refresh(url) 
 			SELECT url FROM %%s
-			WHERE url LIKE ? AND cachexpired(header, response_time, %s)`, fmt.Sprint(*shared))
+			WHERE url LIKE ? AND cachexpiredttl(header, request_time, response_time, %s, ?) = 'true'`, fmt.Sprint(*shared))
 	} else {
 		fn = refreshDataTTL
 		queryTemplate = `INSERT INTO temp.%s_refresh(url) 
@@ -156,7 +156,7 @@ func refreshDataRFC9111(stmts map[string]*sql.Stmt) {
 	slog.Info("starting data verification using RFC9111 strategy")
 
 	for tableName, stmt := range stmts {
-		res, err := stmt.Exec(*matchURL)
+		res, err := stmt.Exec(*matchURL, *ttl)
 		if err != nil {
 			slog.Error("error refreshing data", "error", err, "table", tableName)
 			continue

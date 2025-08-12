@@ -1,38 +1,28 @@
-package main
+package proxy
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/elazarl/goproxy"
 
-	"github.com/walterwanderley/sqlite-http-cache/db"
 	cachehttp "github.com/walterwanderley/sqlite-http-cache/http"
 )
 
-type requestQuerier interface {
-	FindByURL(ctx context.Context, url string) (*db.Response, error)
+type requestTTLHandler struct {
+	verbose         bool
+	cacheableStatus []int
+	ttl             int
+	readOnly        bool
+	querier         RequestQuerier
 }
 
-type requestHandler struct {
-	verbose  bool
-	ttl      uint
-	readOnly bool
-	querier  requestQuerier
-}
-
-type userData struct {
-	requestTime time.Time
-	databaseID  int
-	tableName   string
-}
-
-func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func (h *requestTTLHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	if r.Method != http.MethodGet {
 		return r, nil
 	}
@@ -50,8 +40,11 @@ func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 		}
 		return r, nil
 	}
+	if !slices.Contains(h.cacheableStatus, resp.Status) {
+		return r, nil
+	}
 
-	if !h.readOnly && h.ttl > 0 && uint(time.Since(resp.ResponseTime).Seconds()) > h.ttl {
+	if !h.readOnly && h.ttl > 0 && int(time.Since(resp.ResponseTime).Seconds()) > h.ttl {
 		// data is too old, tell the responseHandler to save the new data
 		ctx.UserData = userData{
 			requestTime: time.Now(),
@@ -68,8 +61,8 @@ func (h *requestHandler) Handle(r *http.Request, ctx *goproxy.ProxyCtx) (*http.R
 	if header.Get("Date") == "" {
 		header.Set("Date", time.Now().Format(time.RFC1123))
 	}
-	// TODO fix age calc based on RFC 9111
-	if age := cachehttp.Age(header); age != nil {
+
+	if age := cachehttp.Age(header, resp.RequestTime, resp.ResponseTime); age != nil {
 		header.Set("Age", fmt.Sprint(*age))
 	}
 

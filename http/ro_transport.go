@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/walterwanderley/sqlite-http-cache/db"
@@ -17,12 +18,13 @@ type readOnlyTransportQuerier interface {
 }
 
 type readOnlyTransport struct {
-	base    http.RoundTripper
-	querier readOnlyTransportQuerier
-	ttl     time.Duration
+	base            http.RoundTripper
+	querier         readOnlyTransportQuerier
+	cacheableStatus []int
+	ttl             time.Duration
 }
 
-func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, ttl time.Duration, tableNames ...string) (*readOnlyTransport, error) {
+func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, cacheableStatus []int, ttl time.Duration, tableNames ...string) (*readOnlyTransport, error) {
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone()
 	}
@@ -31,9 +33,10 @@ func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, ttl time.Durati
 		return nil, fmt.Errorf("creating repository: %w", err)
 	}
 	return &readOnlyTransport{
-		base:    base,
-		querier: querier,
-		ttl:     ttl,
+		base:            base,
+		querier:         querier,
+		cacheableStatus: cacheableStatus,
+		ttl:             ttl,
 	}, nil
 }
 
@@ -47,7 +50,9 @@ func (t *readOnlyTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	if err != nil || (t.ttl > 0 && time.Since(resp.ResponseTime) > t.ttl) {
 		return t.base.RoundTrip(req)
 	}
-
+	if len(t.cacheableStatus) > 0 && !slices.Contains(t.cacheableStatus, resp.Status) {
+		return t.base.RoundTrip(req)
+	}
 	return &http.Response{
 		StatusCode: resp.Status,
 		Body:       resp.Body,

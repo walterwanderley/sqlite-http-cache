@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"context"
@@ -12,22 +12,25 @@ import (
 )
 
 type responseRFC9111Handler struct {
-	shared  bool
-	writer  responseWriter
-	verbose bool
+	shared      bool
+	ttlFallback int
+	writer      ResponseWriter
+	verbose     bool
 }
 
 func (h *responseRFC9111Handler) Handle(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-	now := time.Now()
-	cc := cachehttp.ParseCacheControl(resp.Header, &now, h.shared)
-	if !cc.Cacheable() {
+	requestTime := time.Now()
+	ud, ok := ctx.UserData.(userData)
+	if ok {
+		requestTime = ud.requestTime
+	}
+
+	responseTime := time.Now()
+	cc := cachehttp.ParseCacheControl(resp.Header, &requestTime, &responseTime, h.shared, h.ttlFallback)
+	if !cc.Cacheable() || !ok {
 		return resp
 	}
 
-	ud, ok := ctx.UserData.(userData)
-	if !ok {
-		return resp
-	}
 	responseDB, err := db.HttpToResponse(resp)
 	if err != nil {
 		slog.Error("adapter response body", "error", err)

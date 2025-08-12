@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +17,6 @@ import (
 
 	"github.com/walterwanderley/sqlite-http-cache/config"
 	"github.com/walterwanderley/sqlite-http-cache/db"
-)
-
-var (
-	defaultStatusCodes = []int{200, 301, 404}
-	tableNameValid     = regexp.MustCompilePOSIX("^[a-zA-Z_][a-zA-Z0-9_.]*$").MatchString
 )
 
 type CacheModule struct {
@@ -38,7 +31,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 		responseTableName string
 		timeout           time.Duration
 		insecure          bool
-		statusCodes       = slices.Clone(defaultStatusCodes)
+		statusCodes       = config.DefaultStatusCodes()
 		header            = make(map[string]string)
 		credentials       clientcredentials.Config
 		certFilePath      string
@@ -85,7 +78,7 @@ func (m *CacheModule) Connect(conn *sqlite.Conn, args []string, declare func(str
 					statusCodes = statusCodesParam
 				}
 			case config.ResponseTableName:
-				if tableNameValid(v) {
+				if db.TableNameValid(v) {
 					responseTableName = v
 				} else {
 					return nil, fmt.Errorf("invalid %q option", k)

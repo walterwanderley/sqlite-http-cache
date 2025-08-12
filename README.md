@@ -24,7 +24,10 @@ SELECT JSON_EXTRACT(body, '$.result.properties.title') AS title,
   FROM http_response;
 
 # Use cacheage, cachelifetime or cachexpired function to check cache validity based on RFC9111
-SELECT url, cacheage(header) AS age, cachelifetime(header, request_time, true) AS lifetime, cachexpired(header, request_time, true) AS expired 
+SELECT url, cacheage(header, request_time, response_time) AS age, 
+cachelifetime(header, response_time) AS lifetime, 
+cachexpired(header, request_time, response_time, false) AS expired, 
+cachexpiredttl(header, request_time, response_time, false, 3600) AS expiredTTLFallback 
 FROM http_response; 
 ```
 
@@ -36,13 +39,13 @@ You can configure the behaviour by passing parameters to a VIRTUAL TABLE.
 |-------|-------------|---------|
 | timeout | Timeout in milliseconds | 0 |
 | insecure | Insecure skip TLS validation | false |
-| status_code | Comma-separated list of HTTP status code to persist. Use empty to persist all status | 200,301,404 |
+| status_code | Comma-separated list of HTTP status code to persist. Use empty to persist all status | 200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414, 501 |
 | response_table | Database table used to store response data | http_response |
 | oauth2_client_id | Oauth2 Client ID | |
 | oauth2_client_secret | Oauth2 Client Secret | |
 | oauth2_token_url | Oauth2 Token URL (Client Credentials Flow) | |
 | cert_file | Mutual TLS: path to certificate file | |
-| crt_key_file | Mutual TLS: path to certificate key file | |
+| cert_key_file | Mutual TLS: path to certificate key file | |
 | ca_file | Path to CA certificate file | |
 
 **Any other parameter will be included as an HTTP header in the request** 
@@ -59,7 +62,7 @@ CREATE VIRTUAL TABLE temp.custom_request USING http_request(authorization=Bearer
 
 ```sh
 # Create a Virtual Table to customize options
-CREATE VIRTUAL TABLE temp.custom_request USING http_request(insecure=true, timeout=10000, accept=application/json, authorization=Bearer ${API_TOKEN}, response_table=films);
+CREATE VIRTUAL TABLE temp.custom_request USING http_request(insecure=true, timeout=10000, accept=application/json, authorization='Bearer ${API_TOKEN}', response_table=films);
 
 # Insert URL into the Virtual Table to trigger the HTTP Request 
 INSERT INTO temp.custom_request VALUES('https://swapi.tech/api/films/2');
@@ -103,6 +106,10 @@ sqlite-http-refresh file:example.db?_journal=WAL&_sync=NORMAL&_timeout=5000&_txl
 ### Operating System Schedulers
 
 - **Cron (Linux/macOS):** You can set up cron jobs to execute a script at specified intervals (e.g., every minute, hour, or day). This script would then connect to your SQLite database and perform the desired INSERT operations.
+
+```sh
+sqlite3 -cmd ".load /usr/lib/httpcache.so" "INSERT INTO temp.http_request SELECT url FROM http_response WHERE unixepoch() - ((julianday(response_time) - 2440587.5) * 86400.0) > 3600;" 
+```
 
 - **Task Scheduler (Windows):** Similar to cron, Windows Task Scheduler allows you to schedule tasks, including running scripts or programs that interact with SQLite.
 

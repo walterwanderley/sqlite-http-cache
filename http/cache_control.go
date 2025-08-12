@@ -44,13 +44,17 @@ type CacheControl struct {
 	date    *time.Time
 	expires *time.Time
 
-	requestTime *time.Time
+	requestTime  *time.Time
+	responseTime *time.Time
+
+	ttlFallback int // fallback
 }
 
-func ParseCacheControl(header http.Header, requestTime *time.Time, sharedCache bool) (cc CacheControl) {
+func ParseCacheControl(header http.Header, requestTime *time.Time, responseTime *time.Time, sharedCache bool, ttlFallback int) (cc CacheControl) {
 	cc.requestTime = requestTime
+	cc.responseTime = responseTime
 	cc.sharedCache = sharedCache
-	cc.requestTime = requestTime
+	cc.ttlFallback = ttlFallback
 
 	cacheControlHeader := header.Get("Cache-Control")
 
@@ -133,6 +137,9 @@ func (c CacheControl) Cacheable() bool {
 }
 
 func (c CacheControl) Expired() bool {
+	if c.requestTime == nil || c.responseTime == nil {
+		return true
+	}
 	if !c.Cacheable() {
 		return true
 	}
@@ -148,17 +155,14 @@ func (c CacheControl) Expired() bool {
 		return true
 	}
 
-	age := int(time.Since(*refDate).Seconds())
+	age := calculateAge(*refDate, *c.requestTime, *c.responseTime)
 
 	return c.isStale(age)
 }
 
 func (c CacheControl) isStale(age int) bool {
 	freshnessLifetime := c.FreshnessLifetime()
-	if freshnessLifetime == nil {
-		return true
-	}
-	return *freshnessLifetime < age
+	return age > freshnessLifetime
 }
 
 func (c CacheControl) MaxAge() *int {
@@ -213,25 +217,25 @@ func (c CacheControl) SMaxAge() *int {
 	return c.sMaxAge
 }
 
-func (c CacheControl) FreshnessLifetime() *int {
+func (c CacheControl) FreshnessLifetime() int {
 	switch {
 	case c.sharedCache && c.sMaxAge != nil:
-		return c.sMaxAge
+		return *c.sMaxAge
 	case c.maxAge != nil:
-		return c.maxAge
+		return *c.maxAge
 	case c.expires != nil:
 		if c.date != nil {
 			t := int(c.expires.Sub(*c.date).Seconds())
 			if t >= 0 {
-				return &t
+				return t
 			}
-		} else if c.requestTime != nil {
-			t := int(c.expires.Sub(*c.requestTime).Seconds())
+		} else if c.responseTime != nil {
+			t := int(c.expires.Sub(*c.responseTime).Seconds())
 			if t >= 0 {
-				return &t
+				return t
 			}
 		}
 	}
 
-	return nil
+	return c.ttlFallback
 }

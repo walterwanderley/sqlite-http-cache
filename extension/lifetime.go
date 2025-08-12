@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/walterwanderley/sqlite"
@@ -12,9 +11,13 @@ import (
 	cachehttp "github.com/walterwanderley/sqlite-http-cache/http"
 )
 
-type FreshnessLifetime struct{}
+type FreshnessLifetime struct {
+	shared bool
+}
 
-func (m *FreshnessLifetime) Args() int           { return 3 }
+func (m *FreshnessLifetime) Args() int {
+	return 2
+}
 func (m *FreshnessLifetime) Deterministic() bool { return true }
 func (m *FreshnessLifetime) Apply(ctx *sqlite.Context, values ...sqlite.Value) {
 	var header http.Header
@@ -23,29 +26,16 @@ func (m *FreshnessLifetime) Apply(ctx *sqlite.Context, values ...sqlite.Value) {
 		return
 	}
 
-	var timestamp *time.Time
+	var responseTime *time.Time
 	if !values[1].IsNil() {
 		if v, err := time.Parse(time.RFC3339Nano, values[1].Text()); err != nil {
-			ctx.ResultError(fmt.Errorf("invalid 'timestamp' param: %v", err))
+			ctx.ResultError(fmt.Errorf("invalid 'response_time' param: %v", err))
 			return
 		} else {
-			timestamp = &v
+			responseTime = &v
 		}
 	}
 
-	var shared bool
-	if v, err := strconv.ParseBool(values[2].Text()); err != nil {
-		ctx.ResultError(fmt.Errorf("invalid 'shared' param: %v", err))
-		return
-	} else {
-		shared = v
-	}
-
-	cacheControl := cachehttp.ParseCacheControl(header, timestamp, shared)
-	if v := cacheControl.FreshnessLifetime(); v != nil {
-		ctx.ResultInt(*v)
-		return
-	}
-
-	ctx.ResultNull()
+	cacheControl := cachehttp.ParseCacheControl(header, nil, responseTime, m.shared, 0)
+	ctx.ResultInt(cacheControl.FreshnessLifetime())
 }

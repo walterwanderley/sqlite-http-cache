@@ -59,11 +59,12 @@ func CreateResponseTableQuery(tableName string) string {
 		)`, tableName)
 }
 
+var TableNameValid = regexp.MustCompilePOSIX("^[a-zA-Z_][a-zA-Z0-9_.]*$").MatchString
+
 func CreateResponseTables(db *sql.DB, tableNames ...string) error {
-	var tableNameValid = regexp.MustCompilePOSIX("^[a-zA-Z_][a-zA-Z0-9_.]*$").MatchString
 
 	for _, tableName := range tableNames {
-		if !tableNameValid(tableName) {
+		if !TableNameValid(tableName) {
 			return fmt.Errorf("tabe name %q is invalid", tableName)
 		}
 		query := CreateResponseTableQuery(tableName)

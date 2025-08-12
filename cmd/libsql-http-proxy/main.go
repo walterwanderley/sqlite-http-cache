@@ -12,11 +12,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/elazarl/goproxy"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
+	"github.com/tursodatabase/go-libsql"
 
 	"github.com/walterwanderley/sqlite-http-cache/config"
 	"github.com/walterwanderley/sqlite-http-cache/db"
@@ -24,9 +25,12 @@ import (
 )
 
 func main() {
-	fs := ff.NewFlagSet("sqlite-http-proxy")
+	fs := ff.NewFlagSet("libsql-http-proxy")
 	port := fs.Uint('p', "port", 8080, "Server port")
-	dbParams := fs.StringLong("db-params", "_journal=WAL&_sync=NORMAL&_timeout=5000&_txlock=immediate", "Database connection params")
+	dbPrimaryURL := fs.StringLong("db-primary-url", "", "Database primary URL")
+	dbSyncInterval := fs.DurationLong("db-sync-interval", 30*time.Second, "Database sync interval")
+	dbAuthToken := fs.StringLong("db-token", "", "Database authorization token")
+	dbEncryptionKey := fs.StringLong("db-key", "", "Database encryption key")
 	verbose := fs.Bool('v', "verbose", "Enable verbose mode")
 	allowHTTP2 := fs.BoolLong("h2", "Allow HTTP2")
 	statusCodes := fs.StringListLong("status-code", fmt.Sprintf("List of cacheable status code. Defaults to the heuristically cacheable codes: %v", config.DefaultStatusCodes()))
@@ -40,7 +44,7 @@ func main() {
 	_ = fs.String('c', "config", "", "config file (optional)")
 
 	if err := ff.Parse(fs, os.Args[1:],
-		ff.WithEnvVarPrefix("SQLITE_HTTP_PROXY"),
+		ff.WithEnvVarPrefix("LIBSQL_HTTP_PROXY"),
 		ff.WithConfigFileFlag("config"),
 		ff.WithConfigFileParser(ff.PlainParser),
 	); err != nil {
@@ -54,8 +58,8 @@ func main() {
 	}
 
 	if *verbose {
-		fmt.Printf("Using options: port=%d db-params=%s, h2=%v, ttl=%d, response-tables=%v, ca-cert=%s, ca-cert-key=%s, read-only=%v, rfc9111=%v shared-cache=%v\n",
-			*port, *dbParams, *allowHTTP2, *ttl, *responseTables, *caCert, *caCertKey, *readOnly, *rfc9111, *shared)
+		fmt.Printf("Using options: port=%d db-primary-url=%s, h2=%v, ttl=%d, response-tables=%v, ca-cert=%s, ca-cert-key=%s, read-only=%v, rfc9111=%v shared-cache=%v\n",
+			*port, *dbPrimaryURL, *allowHTTP2, *ttl, *responseTables, *caCert, *caCertKey, *readOnly, *rfc9111, *shared)
 	}
 
 	dbs := make([]*sql.DB, 0)
@@ -65,38 +69,18 @@ func main() {
 		err        error
 	)
 
-	dsnList := make([]string, 0)
-	for _, pattern := range fs.GetArgs() {
-		if pattern == ":memory:" {
-			dsn := pattern + "?cache=shared"
-			dsnList = append(dsnList, dsn)
-			continue
-		}
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		for _, file := range matches {
-			dsn := fmt.Sprintf("file:%s?%s", file, *dbParams)
-			dsnList = append(dsnList, dsn)
-		}
-		if len(matches) == 0 && !strings.Contains(pattern, "*") {
-			dsn := fmt.Sprintf("file:%s?%s", pattern, *dbParams)
-			dsnList = append(dsnList, dsn)
-		}
-
+	dbOpts := make([]libsql.Option, 0)
+	if *dbAuthToken != "" {
+		dbOpts = append(dbOpts, libsql.WithAuthToken(*dbAuthToken))
+	}
+	if *dbEncryptionKey != "" {
+		dbOpts = append(dbOpts, libsql.WithEncryption(*dbEncryptionKey))
+	}
+	if *dbSyncInterval > 0 {
+		dbOpts = append(dbOpts, libsql.WithSyncInterval(*dbSyncInterval))
 	}
 
-	for _, dsn := range dsnList {
-		sqlDB, err := sql.Open("sqlite3", dsn)
-		if err != nil {
-			log.Fatalf("open db error: %v", err)
-		}
-		defer sqlDB.Close()
-
-		dbs = append(dbs, sqlDB)
-
+	fnRegisterResonseTables := func(sqlDB *sql.DB, dbPath string) {
 		if responseTables == nil || len(*responseTables) == 0 {
 			tableList, err = db.ResponseTables(sqlDB)
 			if err != nil {
@@ -106,10 +90,46 @@ func main() {
 			tableList = *responseTables
 			err := db.CreateResponseTables(sqlDB, tableList...)
 			if err != nil {
-				log.Fatalf("create response tables on DB %q: %v", dsn, err)
+				log.Fatalf("create response tables on DB %q: %v", dbPath, err)
 			}
-
 		}
+	}
+
+	for _, dbPath := range fs.GetArgs() {
+		if strings.HasPrefix(dbPath, "file:") {
+			sqlDB, err := sql.Open("libsql", dbPath)
+			if err != nil {
+				log.Fatalf("connecting to database %q: %v", dbPath, err)
+			}
+			fnRegisterResonseTables(sqlDB, dbPath)
+			dbs = append(dbs, sqlDB)
+			continue
+		}
+		dir, err := os.MkdirTemp("", "libsql-*")
+		if err != nil {
+			log.Fatalf("creating database directory: %v", err)
+		}
+		defer os.RemoveAll(dir)
+
+		connector, err := libsql.NewEmbeddedReplicaConnector(filepath.Join(dir, dbPath), *dbPrimaryURL, dbOpts...)
+		if err != nil {
+			log.Fatalf("creating database connector: %v", err)
+		}
+		defer connector.Close()
+
+		sqlDB := sql.OpenDB(connector)
+		defer func() {
+			if closeError := sqlDB.Close(); closeError != nil {
+				fmt.Println("Error closing database", closeError)
+				if err == nil {
+					err = closeError
+				}
+			}
+		}()
+
+		fnRegisterResonseTables(sqlDB, dbPath)
+		dbs = append(dbs, sqlDB)
+
 	}
 	if len(dbs) == 1 {
 		repository, err = db.NewRepository(dbs[0], tableList...)
@@ -186,7 +206,7 @@ func main() {
 		log.Fatalf("cannot open port %d: %v", port, err)
 	}
 
-	proxy.Logger.Printf("SQLite-HTTP-Proxy listening port=%d", *port)
+	proxy.Logger.Printf("LibSQL-HTTP-Proxy listening port=%d", *port)
 	log.Fatal(http.Serve(lis, proxy))
 }
 

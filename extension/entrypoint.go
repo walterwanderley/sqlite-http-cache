@@ -26,7 +26,17 @@ func init() {
 		if err := api.CreateFunction("cachelifetime", &FreshnessLifetime{}); err != nil {
 			return sqlite.SQLITE_ERROR, err
 		}
+		if err := api.CreateFunction("cachelifetimeshared", &FreshnessLifetime{
+			shared: true,
+		}); err != nil {
+			return sqlite.SQLITE_ERROR, err
+		}
 		if err := api.CreateFunction("cachexpired", &Expired{}); err != nil {
+			return sqlite.SQLITE_ERROR, err
+		}
+		if err := api.CreateFunction("cachexpiredttl", &Expired{
+			fallbackTTL: true,
+		}); err != nil {
 			return sqlite.SQLITE_ERROR, err
 		}
 		return sqlite.SQLITE_OK, nil

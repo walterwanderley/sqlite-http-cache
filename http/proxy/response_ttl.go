@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"context"
@@ -10,16 +10,12 @@ import (
 	"github.com/walterwanderley/sqlite-http-cache/db"
 )
 
-type responseWriter interface {
-	Write(ctx context.Context, url string, resp *db.Response) error
-}
-
-type responseHandler struct {
-	writer  responseWriter
+type responseTTLHandler struct {
+	writer  ResponseWriter
 	verbose bool
 }
 
-func (h *responseHandler) Handle(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+func (h *responseTTLHandler) Handle(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	ud, ok := ctx.UserData.(userData)
 	if ok {
 		if h.verbose {
