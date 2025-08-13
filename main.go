@@ -6,7 +6,11 @@ import (
 
 import "C"
 
-//export main
 func main() {
 
+}
+
+//export generateHeader
+func generateHeader() int {
+	return 0
 }

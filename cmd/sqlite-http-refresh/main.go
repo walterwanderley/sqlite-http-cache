@@ -15,9 +15,9 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
+	_ "github.com/walterwanderley/sqlite-http-cache/cmd/sqlite-http-refresh/internal/loader"
 	"github.com/walterwanderley/sqlite-http-cache/config"
 	"github.com/walterwanderley/sqlite-http-cache/db"
-	_ "github.com/walterwanderley/sqlite-http-cache/extension"
 )
 
 var (
