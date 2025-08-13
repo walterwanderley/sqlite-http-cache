@@ -9,8 +9,7 @@
     "symbols": ["cache_age", "cache_expired", "cache_expired_ttl", "cache_lifetime", "cache_lifetime_shared", "http_request"],
     "assets": {
         "files": {            
-            "linux-amd64": "sqlite-http-cache-{version}-linux-x86.tar.gz",            
-            "windows-amd64": "sqlite-http-cache-{version}-windows-x86.zip"
+            "linux-amd64": "sqlite-http-cache_{version}_Linux_x86_64.tar.gz"
         }
     }
 }
