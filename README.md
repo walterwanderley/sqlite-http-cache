@@ -59,7 +59,7 @@ You can configure the behaviour by passing parameters to a VIRTUAL TABLE.
 You ca use environment variable in the param values. Example:
 
 ```sql
-CREATE VIRTUAL TABLE temp.custom_request USING http_request(authorization=Bearer ${API_TOKEN});
+CREATE VIRTUAL TABLE temp.custom_request USING http_request(authorization='Bearer ${API_TOKEN}');
 ```
 
 ### Examples
