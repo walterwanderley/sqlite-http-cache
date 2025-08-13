@@ -1,0 +1,133 @@
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: httpcache
+    binary: httpcache
+    buildmode: "c-shared"
+    ldflags:
+    - -s -w -X github.com/walterwanderley/sqlite-http-cache/extension.version={{.Version}} -X github.com/walterwanderley/sqlite-http-cache/extension.commit={{.Commit}} -X github.com/walterwanderley/sqlite-http-cache/extension.date={{.Date}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=1
+
+  - id: sqlite-http-proxy
+    main: ./cmd/sqlite-http-proxy
+    binary: sqlite-http-proxy
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=1
+
+  - id: sqlite-http-refresh
+    main: ./cmd/sqlite-http-refresh
+    binary: sqlite-http-refresh
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=1
+    
+  - id: libsql-http-proxy
+    main: ./cmd/libsql-http-proxy
+    binary: libsql-http-proxy    
+    goos:
+      - linux    
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=1
+
+archives:
+  - id: httpcache
+    formats: [tar.gz]
+    ids: [httpcache]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{- .Binary }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - none*
+  
+  - id: sqlite-http-proxy
+    formats: [tar.gz]
+    ids: [sqlite-http-proxy]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{- .Binary }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - none*
+
+  - id: sqlite-http-refresh
+    formats: [tar.gz]
+    ids: [sqlite-http-refresh]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{- .Binary }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - none*
+
+  - id: libsql-http-proxy
+    formats: [tar.gz]
+    ids: [libsql-http-proxy]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{- .Binary }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - none*
+
+changelog:
+  disable: true
+
+release:  
+  github:
+    owner: walterwanderley
+    name: sqlite-http-cache
+
+  draft: true

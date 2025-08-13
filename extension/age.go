@@ -18,7 +18,10 @@ func (m *Age) Args() int {
 	return 3
 }
 
-func (m *Age) Deterministic() bool { return true }
+func (m *Age) Deterministic() bool {
+	return true
+}
+
 func (m *Age) Apply(ctx *sqlite.Context, values ...sqlite.Value) {
 	var header http.Header
 	if err := json.Unmarshal([]byte(values[0].Text()), &header); err != nil {

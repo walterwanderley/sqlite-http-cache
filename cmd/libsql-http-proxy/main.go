@@ -54,7 +54,7 @@ func main() {
 	}
 
 	if len(fs.GetArgs()) == 0 {
-		log.Fatalf("Usage: %s <FLAGS> [DatabasePath1] [DatabasePathN\n\nExample:\n\t%s example.db example2.db example3.db\n", os.Args[0], os.Args[0])
+		log.Fatalf("Usage: %s <FLAGS> [DatabaseDirectory] [local:DatabaseFile]\n\nExample:\n\t%s local:example.db /tmp/example2 \n", os.Args[0], os.Args[0])
 	}
 
 	if *verbose {
@@ -81,10 +81,14 @@ func main() {
 	}
 
 	fnRegisterResonseTables := func(sqlDB *sql.DB, dbPath string) {
+		err := sqlDB.Ping()
+		if err != nil {
+			log.Fatalf("failed to validade database connection: %v", err)
+		}
 		if responseTables == nil || len(*responseTables) == 0 {
 			tableList, err = db.ResponseTables(sqlDB)
 			if err != nil {
-				log.Fatalf("discovery response tables: %v", err)
+				log.Fatalf("discovery response tables: %v\n\tSet the response table name with --response-table flag. \n\n\tExample: --response-table=http_response", err)
 			}
 		} else {
 			tableList = *responseTables
@@ -105,13 +109,18 @@ func main() {
 			dbs = append(dbs, sqlDB)
 			continue
 		}
-		dir, err := os.MkdirTemp("", "libsql-*")
-		if err != nil {
-			log.Fatalf("creating database directory: %v", err)
+		if *dbPrimaryURL == "" {
+			log.Fatal("inform --db-primary-url to embbed replication or use local database path. Example: local:app.db")
 		}
-		defer os.RemoveAll(dir)
 
-		connector, err := libsql.NewEmbeddedReplicaConnector(filepath.Join(dir, dbPath), *dbPrimaryURL, dbOpts...)
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+			err := os.MkdirAll(dbPath, 0750)
+			if err != nil {
+				log.Fatalf("creating directory %q: %v", dbPath, err)
+			}
+		}
+
+		connector, err := libsql.NewEmbeddedReplicaConnector(filepath.Join(dbPath, strings.TrimSuffix(filepath.Base(dbPath), ".db"))+".db", *dbPrimaryURL, dbOpts...)
 		if err != nil {
 			log.Fatalf("creating database connector: %v", err)
 		}

@@ -36,7 +36,7 @@ func main() {
 	caCertKey := fs.StringLong("ca-cert-key", "", "Path to CA Certificate Key file (required to HTTPS proxy)")
 	readOnly := fs.BoolLong("ro", "Read Only mode. Do not store new HTTP responses")
 	rfc9111 := fs.BoolLong("rfc9111", "Use RFC9111 spec")
-	shared := fs.BoolLong("shared", "Enable shared cache mode")
+	shared := fs.BoolLong("shared", "Enable shared cache mode for RFC9111")
 	_ = fs.String('c', "config", "", "config file (optional)")
 
 	if err := ff.Parse(fs, os.Args[1:],
@@ -87,6 +87,9 @@ func main() {
 		}
 
 	}
+	if len(dsnList) == 0 {
+		log.Fatal("no database found")
+	}
 
 	for _, dsn := range dsnList {
 		sqlDB, err := sql.Open("sqlite3", dsn)
@@ -95,12 +98,17 @@ func main() {
 		}
 		defer sqlDB.Close()
 
+		err = sqlDB.Ping()
+		if err != nil {
+			log.Fatalf("failed to validade database connection: %v", err)
+		}
+
 		dbs = append(dbs, sqlDB)
 
 		if responseTables == nil || len(*responseTables) == 0 {
 			tableList, err = db.ResponseTables(sqlDB)
 			if err != nil {
-				log.Fatalf("discovery response tables: %v", err)
+				log.Fatalf("discovery response tables: %v\n\tSet the response table name with --response-table flag. \n\n\tExample: --response-table=http_response", err)
 			}
 		} else {
 			tableList = *responseTables

@@ -18,7 +18,11 @@ type FreshnessLifetime struct {
 func (m *FreshnessLifetime) Args() int {
 	return 2
 }
-func (m *FreshnessLifetime) Deterministic() bool { return true }
+
+func (m *FreshnessLifetime) Deterministic() bool {
+	return true
+}
+
 func (m *FreshnessLifetime) Apply(ctx *sqlite.Context, values ...sqlite.Value) {
 	var header http.Header
 	if err := json.Unmarshal([]byte(values[0].Text()), &header); err != nil {

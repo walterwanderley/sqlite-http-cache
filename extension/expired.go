@@ -26,7 +26,7 @@ func (m *Expired) Deterministic() bool { return true }
 func (m *Expired) Apply(ctx *sqlite.Context, values ...sqlite.Value) {
 	var header http.Header
 	if err := json.Unmarshal([]byte(values[0].Text()), &header); err != nil {
-		ctx.ResultNull()
+		ctx.ResultError(fmt.Errorf("invalid header: %w", err))
 		return
 	}
 
@@ -60,5 +60,9 @@ func (m *Expired) Apply(ctx *sqlite.Context, values ...sqlite.Value) {
 	}
 
 	cacheControl := cachehttp.ParseCacheControl(header, &requestTime, &responseTime, shared, ttl)
-	ctx.ResultText(strconv.FormatBool(cacheControl.Expired()))
+	if cacheControl.Expired() {
+		ctx.ResultInt(1)
+	} else {
+		ctx.ResultInt(0)
+	}
 }

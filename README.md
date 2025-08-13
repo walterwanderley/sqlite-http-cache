@@ -13,21 +13,27 @@ go build -ldflags="-s -w" -buildmode=c-shared -o httpcache.so
 sqlite3
 
 # Load the extension
-.load /path/to/httpcache.so
+.load ./httpcache
+
+# Check extension info
+SELECT cache_info();
 
 # Insert URL into the temp.http_request virtual table to trigger the HTTP Request 
 INSERT INTO temp.http_request VALUES('https://swapi.tech/api/films/1');
+
+# Set output mode (optional)
+.mode qbox
 
 # Fetch data from http_response table (created by the extension)
 SELECT JSON_EXTRACT(body, '$.result.properties.title') AS title,
   JSON_EXTRACT(body, '$.result.properties.release_date') AS release_date 
   FROM http_response;
 
-# Use cacheage, cachelifetime or cachexpired function to check cache validity based on RFC9111
-SELECT url, cacheage(header, request_time, response_time) AS age, 
-cachelifetime(header, response_time) AS lifetime, 
-cachexpired(header, request_time, response_time, false) AS expired, 
-cachexpiredttl(header, request_time, response_time, false, 3600) AS expiredTTLFallback 
+# Use cache_age, cache_lifetime or cache_expired function to check cache validity based on RFC9111
+SELECT url, cache_age(header, request_time, response_time) AS age, 
+cache_lifetime(header, response_time) AS lifetime, 
+cache_expired(header, request_time, response_time, false) AS expired, 
+cache_expired_ttl(header, request_time, response_time, false, 3600) AS expiredTTLFallback 
 FROM http_response; 
 ```
 
@@ -105,16 +111,17 @@ sqlite-http-refresh file:example.db?_journal=WAL&_sync=NORMAL&_timeout=5000&_txl
 
 ### Operating System Schedulers
 
-- **Cron (Linux/macOS):** You can set up cron jobs to execute a script at specified intervals (e.g., every minute, hour, or day). This script would then connect to your SQLite database and perform the desired INSERT operations.
+You can set up Cron Jobs (or Task Scheduler) to execute a script at specified intervals (e.g., every minute, hour, or day). This script would then connect to your SQLite database and perform the desired INSERT operations.
 
 Example:
 
 ```sql
-INSERT INTO temp.http_request SELECT url FROM http_response WHERE unixepoch() - unixepoch(response_time) > :ttl 
+INSERT INTO temp.http_request 
+SELECT url FROM http_response 
+WHERE unixepoch() - unixepoch(response_time) > :ttl ;
 ```
 *ttl is Time to Live in seconds*
 
-- **Task Scheduler (Windows):** Similar to cron, Windows Task Scheduler allows you to schedule tasks, including running scripts or programs that interact with SQLite.
 
 ### Programming Language Libraries
 

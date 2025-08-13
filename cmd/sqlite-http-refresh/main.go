@@ -48,7 +48,7 @@ func main() {
 	ttl = fs.IntLong("ttl", 30*60, "Time to Live in seconds. Fallback if not use RFC9111")
 	matchURL = fs.StringLong("match-url", "%", "Filter URLs (SQL syntax)")
 	rfc9111 = fs.BoolLong("rfc9111", "Refresh data based on RFC9111")
-	shared = fs.BoolLong("shared", "Enable shared cache mode to RFC9111")
+	shared = fs.BoolLong("shared", "Enable shared cache mode (RFC9111)")
 	// Request/Store config
 	timeout = fs.UintLong("timeout", 30*1000, "Timeout in milliseconds")
 	insecure = fs.BoolLong("insecure", "Disable TLS verification")
@@ -86,6 +86,11 @@ func main() {
 	}
 	defer sqlDB.Close()
 
+	err = sqlDB.Ping()
+	if err != nil {
+		log.Fatalf("failed to validade database connection: %v", err)
+	}
+
 	var tableList []string
 	if len(*responseTables) == 0 {
 		tableList, err = db.ResponseTables(sqlDB)
@@ -104,7 +109,7 @@ func main() {
 		fn = refreshDataRFC9111
 		queryTemplate = fmt.Sprintf(`INSERT INTO temp.%%s_refresh(url) 
 			SELECT url FROM %%s
-			WHERE url LIKE ? AND cachexpiredttl(header, request_time, response_time, %s, ?) = 'true'`, fmt.Sprint(*shared))
+			WHERE url LIKE ? AND cache_expired_ttl(header, request_time, response_time, %s, ?) = 1`, fmt.Sprint(*shared))
 	} else {
 		fn = refreshDataTTL
 		queryTemplate = `INSERT INTO temp.%s_refresh(url) 

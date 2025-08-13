@@ -1,5 +1,9 @@
 *.so
+*.dll
+*.dylib
 *.db
 *.db-shm
 *.db-wal
 
+# Added by goreleaser init:
+dist/
