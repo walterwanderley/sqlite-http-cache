@@ -55,7 +55,7 @@ archives:
     ids: [httpcache]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
-      {{- .Binary }}_
+      httpcache_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
