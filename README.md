@@ -1,7 +1,13 @@
 # sqlite-http-cache
 SQLite Extension to cache HTTP requests
 
-## Compiling
+and an [SQLite http proxy cache](#sqlite-proxy-cache).
+
+## Installation
+
+Download **httpcache** extension from the [releases page](https://github.com/walterwanderley/sqlite-http-cache/releases).
+
+### Compiling from source
 
 ```sh
 go build -ldflags="-s -w" -buildmode=c-shared -o httpcache.so
@@ -35,6 +41,19 @@ cache_lifetime(header, response_time) AS lifetime,
 cache_expired(header, request_time, response_time, false) AS expired, 
 cache_expired_ttl(header, request_time, response_time, false, 3600) AS expiredTTLFallback 
 FROM http_response; 
+```
+
+All HTTP responses are stored in tables using the following schema:
+
+```sql
+CREATE TABLE IF NOT EXISTS http_response(
+		url TEXT PRIMARY KEY,
+		status INTEGER,
+		body BLOB,
+		header JSONB,
+		request_time DATETIME,
+		response_time DATETIME
+)
 ```
 
 ## Configuring
@@ -97,7 +116,7 @@ To schedule inserts in SQLite, a common approach involves using external schedul
 
 ### sqlite-http-refresh
 
-1. Install
+1. Install from source or download from [releases page](https://github.com/walterwanderley/sqlite-http-cache/releases)
 
 ```sh
 go install github.com/walterwanderley/cmd/sqlite-http-refresh@latest
@@ -122,11 +141,31 @@ WHERE unixepoch() - unixepoch(response_time) > :ttl ;
 ```
 *ttl is Time to Live in seconds*
 
+## SQLite Proxy Cache
 
-### Programming Language Libraries
+The sqlite-http-proxy is an HTTP proxy cache that can store data in multiple sqlite databases and query concurrently to get the faster response. The cache imlements the RFC9111 (except the vary header).
 
-- **Python:** Libraries like schedule, APScheduler, or Celery can be used to define and manage scheduled tasks within a Python application. This application would then execute INSERT statements into your SQLite database at the specified times.
+1. Installation:
 
-- **Node.js:** Libraries such as node-cron or agenda provide similar scheduling capabilities for Node.js applications.
+Download sqlite-http-proxy from the [releases page](https://github.com/walterwanderley/sqlite-http-cache/releases), or install from source:
 
-- **Golang:** [Check an example](https://github.com/walterwanderley/sqlite-http-cache/blob/main/cmd/sqlite-http-refresh/main.go) using the stdlib.
+```sh
+go install github.com/walterwanderley/cmd/sqlite-http-proxy@latest
+```
+
+2. Executing:
+
+```sh
+sqlite-http-proxy --port 9090 --response-table http_response proxy1.db proxy2.db proxy3.db
+```
+
+3. Testing:
+
+```sh
+time curl -x http://127.0.0.1:9090 http://swapi.tech/api/films/1
+time curl -x http://127.0.0.1:9090 http://swapi.tech/api/films/1
+```
+
+```sh
+sqlite-http-proxy --help
+```
