@@ -29,7 +29,6 @@ func newSingleRepository(db *sql.DB, tableName string, ttl time.Duration, cleanu
 	if err != nil {
 		return nil, fmt.Errorf("prepare writer query for %q: %w", tableName, err)
 	}
-	fmt.Println(cleanupByTTLQuery(tableName))
 	cleanupStmt, err := db.Prepare(cleanupByTTLQuery(tableName))
 	if err != nil {
 		return nil, fmt.Errorf("prepare cleanup query for %q: %w", tableName, err)
