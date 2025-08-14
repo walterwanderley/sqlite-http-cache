@@ -44,27 +44,42 @@ func (t *readWriteTransport) RoundTrip(req *http.Request) (*http.Response, error
 		return t.base.RoundTrip(req)
 	}
 
+	var (
+		resp *http.Response
+		err  error
+	)
 	url := req.URL.String()
 	respDB, err := t.querier.FindByURL(req.Context(), url)
-	if err != nil || (t.ttl > 0 && time.Since(respDB.ResponseTime) > t.ttl) ||
-		(len(t.cacheableStatus) > 0 && !slices.Contains(t.cacheableStatus, respDB.Status)) {
-		resp, err := t.base.RoundTrip(req)
-		if err == nil && respDB != nil {
-			newRespDB, err := db.HttpToResponse(resp)
-			if err == nil {
-				newRespDB.TableName = respDB.TableName
-				t.querier.Write(context.Background(), url, newRespDB)
-			}
+	if err != nil {
+		resp, err = t.base.RoundTrip(req)
+		if err != nil {
+			return nil, err
 		}
-		return resp, err
 	}
 
-	return &http.Response{
-		StatusCode: respDB.Status,
-		Body:       respDB.Body,
-		Header:     http.Header(respDB.Header),
-	}, nil
+	if respDB != nil && !((t.ttl > 0 && time.Since(respDB.ResponseTime) > t.ttl) ||
+		(len(t.cacheableStatus) > 0 && !slices.Contains(t.cacheableStatus, respDB.Status))) {
+		return &http.Response{
+			StatusCode: respDB.Status,
+			Body:       respDB.Body,
+			Header:     http.Header(respDB.Header),
+		}, nil
+	}
+	if resp == nil {
+		resp, err = t.base.RoundTrip(req)
+		if err != nil {
+			return nil, err
+		}
+	}
+	newRespDB, err := db.HttpToResponse(resp)
+	if err == nil {
+		if respDB != nil {
+			newRespDB.TableName = respDB.TableName
+		}
+		t.querier.Write(context.Background(), url, newRespDB)
+	}
 
+	return resp, err
 }
 
 func (t *readWriteTransport) Close() error {

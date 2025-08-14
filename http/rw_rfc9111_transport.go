@@ -54,39 +54,55 @@ func (t *readWriteRFC9111Transport) RoundTrip(req *http.Request) (*http.Response
 		return t.base.RoundTrip(req)
 	}
 
+	var (
+		requestTime  time.Time
+		responseTime time.Time
+		resp         *http.Response
+		err          error
+	)
 	url := req.URL.String()
 	respDB, err := t.querier.FindByURL(req.Context(), url)
 	if err != nil {
-		requestTime := time.Now()
-		resp, err := t.base.RoundTrip(req)
+		requestTime = time.Now()
+		resp, err = t.base.RoundTrip(req)
 		if err != nil {
 			return nil, err
 		}
-		responseTime := time.Now()
+		responseTime = time.Now()
+	}
 
-		respCC := ParseCacheControl(http.Header(resp.Header), &requestTime, &responseTime, t.sharedCache, ttlSeconds)
-		if slices.Contains(t.cacheableStatus, resp.StatusCode) && respCC.Cacheable() && respDB != nil {
-			newRespDB, err := db.HttpToResponse(resp)
-			if err == nil {
+	if respDB != nil {
+		respCC := ParseCacheControl(http.Header(respDB.Header), &respDB.RequestTime, &respDB.ResponseTime, t.sharedCache, ttlSeconds)
+		if !respCC.Expired() {
+			return &http.Response{
+				StatusCode: respDB.Status,
+				Body:       respDB.Body,
+				Header:     http.Header(respDB.Header),
+			}, nil
+		}
+	}
+
+	if resp == nil {
+		requestTime = time.Now()
+		resp, err = t.base.RoundTrip(req)
+		if err != nil {
+			return nil, err
+		}
+		responseTime = time.Now()
+	}
+	respCC := ParseCacheControl(http.Header(resp.Header), &requestTime, &responseTime, t.sharedCache, ttlSeconds)
+	if slices.Contains(t.cacheableStatus, resp.StatusCode) && respCC.Cacheable() {
+		newRespDB, err := db.HttpToResponse(resp)
+		if err == nil {
+			if respDB != nil {
 				newRespDB.TableName = respDB.TableName
-				t.querier.Write(context.Background(), url, newRespDB)
 			}
+			t.querier.Write(context.Background(), url, newRespDB)
 		}
 
-		return resp, err
 	}
 
-	respCC := ParseCacheControl(http.Header(respDB.Header), &respDB.RequestTime, &respDB.ResponseTime, t.sharedCache, ttlSeconds)
-	if respCC.Expired() {
-		return t.base.RoundTrip(req)
-	}
-
-	return &http.Response{
-		StatusCode: respDB.Status,
-		Body:       respDB.Body,
-		Header:     http.Header(respDB.Header),
-	}, nil
-
+	return resp, err
 }
 
 func (t *readWriteRFC9111Transport) Close() error {

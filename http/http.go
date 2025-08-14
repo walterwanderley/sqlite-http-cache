@@ -28,17 +28,22 @@ type Config struct {
 	CleanupInterval time.Duration
 }
 
-func (c Config) Client(ctx context.Context) (*http.Client, io.Closer, error) {
+func (c Config) Client(ctx context.Context) (*http.Client, error) {
 	cc := internal.ContextClient(ctx)
 	t, err := newTransport(cc.Transport, c)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+
+	go func() {
+		<-ctx.Done()
+		t.Close()
+	}()
 
 	return &http.Client{
 		Transport:     t,
 		CheckRedirect: cc.CheckRedirect,
 		Jar:           cc.Jar,
 		Timeout:       cc.Timeout,
-	}, t, nil
+	}, nil
 }

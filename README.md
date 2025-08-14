@@ -226,12 +226,62 @@ This repository has an http.Transport implementation to use sqlite as cache of H
 ```go
 package main
 
-import httpcache "github.com/walterwanderley/sqlite-http-cache/http"
+import (
+	"context"
+	"database/sql"
+	"log/slog"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+	dbcache "github.com/walterwanderley/sqlite-http-cache/db"
+	httpcache "github.com/walterwanderley/sqlite-http-cache/http"
+)
 
 func main() {
 
+	db, err := sql.Open("sqlite3", "file:example.db")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	tablesNames := []string{"example"}
+
+	err = dbcache.CreateResponseTables(db, tablesNames...)
+	if err != nil {
+		panic(err)
+	}
+
+	config := httpcache.Config{
+		DB:              db,
+		Tables:          tablesNames,
+		ReadOnly:        false,
+		TTL:             30 * time.Second,
+		RFC9111:         false,
+		CleanupInterval: 0,
+	}
+
+	client, err := config.Client(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	start := time.Now()
+	resp, err := client.Get("http://swapi.tech/api/films/1")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	slog.Info("first request", "duration", time.Since(start))
+
+	start = time.Now()
+	resp, err = client.Get("http://swapi.tech/api/films/1")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	slog.Info("second request", "duration", time.Since(start))
 }
-
-
-
 ```
