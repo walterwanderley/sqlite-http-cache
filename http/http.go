@@ -25,6 +25,7 @@ type Config struct {
 	TTL             time.Duration
 	RFC9111         bool
 	SharedCache     bool
+	CleanupInterval time.Duration
 }
 
 func (c Config) Client(ctx context.Context) (*http.Client, io.Closer, error) {

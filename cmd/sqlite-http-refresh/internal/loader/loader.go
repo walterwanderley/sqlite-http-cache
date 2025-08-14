@@ -3,9 +3,6 @@ package loader
 import _ "github.com/walterwanderley/sqlite-http-cache/extension"
 
 // #cgo CFLAGS: -DSQLITE_CORE
-// #cgo linux LDFLAGS: -Wl,--unresolved-symbols=ignore-in-object-files
-// #cgo darwin LDFLAGS: -Wl,-undefined,dynamic_lookup
-// #cgo windows LDFLAGS: -Wl,--allow-multiple-definition
 //
 // #include "../../../../sqlite3.h"
 //

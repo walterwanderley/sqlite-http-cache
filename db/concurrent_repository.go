@@ -3,8 +3,11 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+	"time"
 )
 
 type concurrentRepository struct {
@@ -20,14 +23,20 @@ type concurrentRepository struct {
 	// workers for MultiDatabaseRepository
 	source chan work
 	quit   chan struct{}
+
+	// cleanup attributes
+	cleanupCancelation func()
+	ttl                int64 // time to live in miliseconds
+	cleaners           []*sql.Stmt
 }
 
-func newConcurrentRepository(db *sql.DB, databaseID int, tableNames ...string) (*concurrentRepository, error) {
+func newConcurrentRepository(db *sql.DB, databaseID int, ttl time.Duration, cleanupInterval time.Duration, tableNames ...string) (*concurrentRepository, error) {
 	globalQuit := make(chan struct{})
 
 	size := len(tableNames)
 	queriers := make([]*querier, size)
 	writers := make([]*sql.Stmt, size)
+	cleaners := make([]*sql.Stmt, size)
 	for i, tableName := range tableNames {
 		readStmt, err := db.Prepare(readerQuery(tableName))
 		if err != nil {
@@ -42,14 +51,40 @@ func newConcurrentRepository(db *sql.DB, databaseID int, tableNames ...string) (
 			return nil, fmt.Errorf("prepare writer query for %q: %w", tableName, err)
 		}
 		writers[i] = writeStmt
+
+		cleanupStmt, err := db.Prepare(cleanupByTTLQuery(tableName))
+		if err != nil {
+			return nil, fmt.Errorf("prepare cleanup query for %q: %w", tableName, err)
+		}
+
+		cleaners[i] = cleanupStmt
 	}
 
-	return &concurrentRepository{
+	repository := concurrentRepository{
 		db:         db,
 		queriers:   queriers,
 		globalQuit: globalQuit,
 		writers:    writers,
-	}, nil
+		cleaners:   cleaners,
+		ttl:        int64(ttl.Seconds()),
+	}
+	if cleanupInterval > 0 && ttl > 0 {
+		slog.Info("Repository cleanup started", "ttl", ttl, "interval", cleanupInterval)
+		ctx, cancel := context.WithCancel(context.Background())
+		repository.cleanupCancelation = cancel
+		go func() {
+			ticker := time.NewTicker(cleanupInterval)
+			for {
+				select {
+				case <-ticker.C:
+					repository.cleanup()
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+	return &repository, nil
 }
 
 func (r *concurrentRepository) FindByURL(ctx context.Context, url string) (*Response, error) {
@@ -115,11 +150,43 @@ func (r *concurrentRepository) Write(ctx context.Context, url string, resp *Resp
 }
 
 func (r *concurrentRepository) Close() error {
+	if r.cleanupCancelation != nil {
+		r.cleanupCancelation()
+	}
 	if r.quit != nil {
 		close(r.quit)
 	}
 	close(r.globalQuit)
-	return nil
+	var err error
+	for _, stmt := range r.writers {
+		err = errors.Join(stmt.Close())
+	}
+	for _, stmt := range r.cleaners {
+		err = errors.Join(stmt.Close())
+	}
+	return err
+}
+
+func (r *concurrentRepository) cleanup() {
+	r.muWriter.Lock()
+	defer r.muWriter.Unlock()
+	for _, cleanupStmt := range r.cleaners {
+		for {
+			res, err := cleanupStmt.Exec(r.ttl)
+			if err != nil {
+				slog.Error("cleanup", "error", err)
+				break
+			}
+			rowsAffected, err := res.RowsAffected()
+			if err != nil {
+				slog.Error("cleanup rowsAffected", "error", err)
+				break
+			}
+			if rowsAffected == 0 {
+				break
+			}
+		}
+	}
 }
 
 func (r *concurrentRepository) start() {

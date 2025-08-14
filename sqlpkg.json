@@ -1,7 +1,7 @@
 {
     "owner": "walterwanderley",
     "name": "sqlite-http-cache",
-    "version": "v0.0.3",
+    "version": "v0.0.4",
     "repository": "https://github.com/walterwanderley/sqlite-http-cache",
     "authors": ["Walter Wanderley"],
     "license": "Apache v2",
@@ -9,8 +9,10 @@
     "symbols": ["cache_age", "cache_expired", "cache_expired_ttl", "cache_lifetime", "cache_lifetime_shared", "http_request"],
     "assets": {
         "files": {
-            "linux-amd64": "httpcache_0.0.3_Linux_x86_64.tar.gz",
-            "windows-amd64": "httpcache_0.0.3_Windows_x86_64.zip"
+            "darwin-amd64": "httpcache_{version}_Darwin_x86_64.tar.gz",
+            "darwin-arm64": "httpcache_{version}_Darwin_arm64.tar.gz",
+            "linux-amd64": "httpcache_{version}_Linux_x86_64.tar.gz",
+            "windows-amd64": "httpcache_{version}_Windows_x86_64.zip"
         }
     }
 }

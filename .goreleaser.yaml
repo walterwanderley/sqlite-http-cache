@@ -10,6 +10,8 @@ builds:
   - id: httpcache
     binary: httpcache
     buildmode: "c-shared"
+    flags:
+      - -tags=zig
     ldflags:
     - -s -w -X github.com/walterwanderley/sqlite-http-cache/extension.version={{.Version}} -X github.com/walterwanderley/sqlite-http-cache/extension.commit={{.Commit}} -X github.com/walterwanderley/sqlite-http-cache/extension.date={{.Date}}
     goos:
@@ -18,33 +20,55 @@ builds:
       - amd64
     env:
       - CGO_ENABLED=1
+      - CC=zig cc -target x86_64-linux-gnu
 
   - id: httpcache_windows
+    binary: httpcache
+    buildmode: "c-shared"
+    flags:
+      - -tags=zig
+    ldflags:
+    - -s -w -X github.com/walterwanderley/sqlite-http-cache/extension.version={{.Version}} -X github.com/walterwanderley/sqlite-http-cache/extension.commit={{.Commit}} -X github.com/walterwanderley/sqlite-http-cache/extension.date={{.Date}}
+    goos:
+      - windows
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=1
+      - CC=zig cc -target x86_64-windows
+
+  - id: httpcache_darwin
     binary: httpcache
     buildmode: "c-shared"
     ldflags:
     - -s -w -X github.com/walterwanderley/sqlite-http-cache/extension.version={{.Version}} -X github.com/walterwanderley/sqlite-http-cache/extension.commit={{.Commit}} -X github.com/walterwanderley/sqlite-http-cache/extension.date={{.Date}}
     goos:
-      - windows
+      - darwin
     goarch:
       - amd64
+      - arm64
     env:
       - CGO_ENABLED=1
-      - CC=zig cc -target x86_64-windows
+      - CC=o64-clang
 
   - id: sqlite-http-proxy
     main: ./cmd/sqlite-http-proxy
     binary: sqlite-http-proxy
+    flags:
+      - -tags=zig
     goos:
       - linux
     goarch:
       - amd64
     env:
       - CGO_ENABLED=1
+      - CC=zig cc -target x86_64-linux-musl
 
   - id: sqlite-http-proxy_windows
     main: ./cmd/sqlite-http-proxy
     binary: sqlite-http-proxy
+    flags:
+      - -tags=zig
     goos:
       - windows
     goarch:
@@ -53,15 +77,55 @@ builds:
       - CGO_ENABLED=1
       - CC=zig cc -target x86_64-windows
 
+  - id: sqlite-http-proxy_darwin
+    main: ./cmd/sqlite-http-proxy
+    binary: sqlite-http-proxy
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=1
+      - CC=o64-clang
+
   - id: sqlite-http-refresh
     main: ./cmd/sqlite-http-refresh
     binary: sqlite-http-refresh
+    flags:
+      - -tags=zig
     goos:
       - linux
     goarch:
       - amd64
     env:
       - CGO_ENABLED=1  
+      - CC=zig cc -target x86_64-linux-musl
+
+  - id: sqlite-http-refresh_windows
+    main: ./cmd/sqlite-http-refresh
+    binary: sqlite-http-refresh
+    flags:
+      - -tags=zig
+    goos:
+      - windows
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=1
+      - CC=zig cc -target x86_64-windows
+
+  - id: sqlite-http-refresh_darwin
+    main: ./cmd/sqlite-http-refresh
+    binary: sqlite-http-refresh
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=1  
+      - CC=o64-clang
     
   - id: libsql-http-proxy
     main: ./cmd/libsql-http-proxy
@@ -76,10 +140,10 @@ builds:
 archives:
   - id: httpcache
     formats: [tar.gz]
-    ids: [httpcache, httpcache_windows]
+    ids: [httpcache, httpcache_windows, httpcache_darwin]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
-      httpcache_
+      httpcache_v
       {{- .Version }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
@@ -95,7 +159,7 @@ archives:
   
   - id: sqlite-http-proxy
     formats: [tar.gz]
-    ids: [sqlite-http-proxy, sqlite-http-proxy_windows]
+    ids: [sqlite-http-proxy, sqlite-http-proxy_windows, sqlite-http-proxy_darwin]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{- .Binary }}_
@@ -114,7 +178,7 @@ archives:
 
   - id: sqlite-http-refresh
     formats: [tar.gz]
-    ids: [sqlite-http-refresh]
+    ids: [sqlite-http-refresh, sqlite-http-refresh_windows, sqlite-http-refresh_darwin]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{- .Binary }}_

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"sync"
+	"time"
 )
 
 type MultiDatabaseRepository struct {
@@ -14,14 +15,14 @@ type MultiDatabaseRepository struct {
 	muWriter      sync.Mutex
 }
 
-func NewMultiDatabaseRepository(dbs []*sql.DB) (*MultiDatabaseRepository, error) {
+func NewMultiDatabaseRepositoryWithTTL(ttl time.Duration, cleanupInterval time.Duration, dbs []*sql.DB) (*MultiDatabaseRepository, error) {
 	concurrentRepositories := make([]*concurrentRepository, len(dbs))
 	for i, db := range dbs {
 		tables, err := ResponseTables(db)
 		if err != nil {
 			return nil, err
 		}
-		cr, err := newConcurrentRepository(db, i, tables...)
+		cr, err := newConcurrentRepository(db, i, ttl, cleanupInterval, tables...)
 		if err != nil {
 			return nil, err
 		}
@@ -31,6 +32,10 @@ func NewMultiDatabaseRepository(dbs []*sql.DB) (*MultiDatabaseRepository, error)
 	return &MultiDatabaseRepository{
 		concurrentRepositories: concurrentRepositories,
 	}, nil
+}
+
+func NewMultiDatabaseRepository(dbs []*sql.DB) (*MultiDatabaseRepository, error) {
+	return NewMultiDatabaseRepositoryWithTTL(0, 0, dbs)
 }
 
 func (r *MultiDatabaseRepository) FindByURL(ctx context.Context, url string) (*Response, error) {

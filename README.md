@@ -9,6 +9,8 @@ Download **httpcache** extension from the [releases page](https://github.com/wal
 
 ### Compiling from source
 
+- [Go 1.24+](https://go.dev) is required.
+
 ```sh
 go build -ldflags="-s -w" -buildmode=c-shared -o httpcache.so
 ```
@@ -21,9 +23,6 @@ sqlite3
 # Load the extension
 .load ./httpcache
 
-# Check extension info
-SELECT cache_info();
-
 # Insert URL into the temp.http_request virtual table to trigger the HTTP Request 
 INSERT INTO temp.http_request VALUES('https://swapi.tech/api/films/1');
 
@@ -34,6 +33,11 @@ INSERT INTO temp.http_request VALUES('https://swapi.tech/api/films/1');
 SELECT JSON_EXTRACT(body, '$.result.properties.title') AS title,
   JSON_EXTRACT(body, '$.result.properties.release_date') AS release_date 
   FROM http_response;
+┌──────────────┬──────────────┐
+│    title     │ release_date │
+├──────────────┼──────────────┤
+│ 'A New Hope' │ '1977-05-25' │
+└──────────────┴──────────────┘
 
 # Use cache_age, cache_lifetime or cache_expired function to check cache validity based on RFC9111
 SELECT url, cache_age(header, request_time, response_time) AS age, 
@@ -41,19 +45,54 @@ cache_lifetime(header, response_time) AS lifetime,
 cache_expired(header, request_time, response_time, false) AS expired, 
 cache_expired_ttl(header, request_time, response_time, false, 3600) AS expiredTTLFallback 
 FROM http_response; 
+┌──────────────────────────────────┬─────┬──────────┬─────────┬────────────────────┐
+│               url                │ age │ lifetime │ expired │ expiredTTLFallback │
+├──────────────────────────────────┼─────┼──────────┼─────────┼────────────────────┤
+│ 'https://swapi.tech/api/films/1' │ 37  │ 0        │ 1       │ 0                  │
+└──────────────────────────────────┴─────┴──────────┴─────────┴────────────────────┘
 ```
 
 All HTTP responses are stored in tables using the following schema:
 
 ```sql
-CREATE TABLE IF NOT EXISTS http_response(
-		url TEXT PRIMARY KEY,
-		status INTEGER,
-		body BLOB,
-		header JSONB,
-		request_time DATETIME,
-		response_time DATETIME
+TABLE http_response(
+	url TEXT PRIMARY KEY,
+	status INTEGER,
+	body BLOB,
+	header JSONB,
+	request_time DATETIME,
+	response_time DATETIME
 )
+```
+
+If you want to customize the persisted data, just create an another table and create triggers for "http_response".
+
+```sql
+CREATE TABLE movies(
+  ID INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT,
+  release_date DATETIME
+);
+
+CREATE TRIGGER insert_http_response
+AFTER INSERT ON http_response
+BEGIN
+  INSERT INTO movies(title, release_date)
+  VALUES(
+    JSON_EXTRACT(NEW.body, '$.result.properties.title'),
+    JSON_EXTRACT(NEW.body, '$.result.properties.release_date')
+  );
+END;
+
+INSERT INTO temp.http_request VALUES('https://swapi.tech/api/films/2');
+
+SELECT * FROM movies;
+┌────┬───────────────────────────┬──────────────┐
+│ ID │           title           │ release_date │
+├────┼───────────────────────────┼──────────────┤
+│ 1  │ 'The Empire Strikes Back' │ '1980-05-17' │
+└────┴───────────────────────────┴──────────────┘
+
 ```
 
 ## Configuring
@@ -143,7 +182,7 @@ WHERE unixepoch() - unixepoch(response_time) > :ttl ;
 
 ## SQLite Proxy Cache
 
-The sqlite-http-proxy is an HTTP proxy cache that can store data in multiple sqlite databases and query concurrently to get the faster response. The cache imlements the RFC9111 (except the vary header).
+The sqlite-http-proxy is an HTTP proxy cache that can store data in multiple sqlite databases and query concurrently to get the faster response. The cache implements [RFC9111](https://www.rfc-editor.org/rfc/rfc9111.html) (except for the Vary header).
 
 1. Installation:
 
@@ -166,6 +205,33 @@ time curl -x http://127.0.0.1:9090 http://swapi.tech/api/films/1
 time curl -x http://127.0.0.1:9090 http://swapi.tech/api/films/1
 ```
 
+### Proxing HTTPS Requests
+
+To proxy https requests you need to pass CA Certificate and CA Certificate key to the sqlite-http-proxy.
+
+```sh
+sqlite-http-proxy --ca-cert=/path/to/ca.crt --ca-cert-key=/path/to/ca.key proxyN.db
+```
+
+Use the command line flag --help for more info.
+
 ```sh
 sqlite-http-proxy --help
+```
+
+## Go HTTP Client
+
+This repository has an http.Transport implementation to use sqlite as cache of HTTP requests from golang.
+
+```go
+package main
+
+import httpcache "github.com/walterwanderley/sqlite-http-cache/http"
+
+func main() {
+
+}
+
+
+
 ```

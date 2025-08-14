@@ -24,11 +24,11 @@ type readOnlyTransport struct {
 	ttl             time.Duration
 }
 
-func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, cacheableStatus []int, ttl time.Duration, tableNames ...string) (*readOnlyTransport, error) {
+func newReadOnlyTransport(base http.RoundTripper, sqlDB *sql.DB, cacheableStatus []int, ttl time.Duration, cleanupInterval time.Duration, tableNames ...string) (*readOnlyTransport, error) {
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone()
 	}
-	querier, err := db.NewRepository(sqlDB, tableNames...)
+	querier, err := db.NewRepository(sqlDB, ttl, cleanupInterval, tableNames...)
 	if err != nil {
 		return nil, fmt.Errorf("creating repository: %w", err)
 	}

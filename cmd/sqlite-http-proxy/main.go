@@ -12,8 +12,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/elazarl/goproxy"
+	"github.com/elazarl/goproxy/ext/auth"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
@@ -27,6 +29,7 @@ func main() {
 	fs := ff.NewFlagSet("sqlite-http-proxy")
 	port := fs.Uint('p', "port", 8080, "Server port")
 	dbParams := fs.StringLong("db-params", "_journal=WAL&_sync=NORMAL&_timeout=5000&_txlock=immediate", "Database connection params")
+	dbCleanupInterval := fs.DurationLong("db-cleanup-interval", 0, "Database cleanup interval. Data is deleted using --ttl as reference")
 	verbose := fs.Bool('v', "verbose", "Enable verbose mode")
 	allowHTTP2 := fs.BoolLong("h2", "Allow HTTP2")
 	statusCodes := fs.StringListLong("status-code", fmt.Sprintf("List of cacheable status code. Defaults to the heuristically cacheable codes: %v", config.DefaultStatusCodes()))
@@ -37,6 +40,8 @@ func main() {
 	readOnly := fs.BoolLong("ro", "Read Only mode. Do not store new HTTP responses")
 	rfc9111 := fs.BoolLong("rfc9111", "Use RFC9111 spec")
 	shared := fs.BoolLong("shared", "Enable shared cache mode for RFC9111")
+	authUser := fs.StringLong("auth-user", "", "Username for proxy basic authentication")
+	authPass := fs.StringLong("auth-pass", "", "Password for proxy basic authentication")
 	_ = fs.String('c', "config", "", "config file (optional)")
 
 	if err := ff.Parse(fs, os.Args[1:],
@@ -120,12 +125,12 @@ func main() {
 		}
 	}
 	if len(dbs) == 1 {
-		repository, err = db.NewRepository(dbs[0], tableList...)
+		repository, err = db.NewRepository(dbs[0], time.Duration(*ttl)*time.Second, *dbCleanupInterval, tableList...)
 		if err != nil {
 			log.Fatalf("new repository: %v", err)
 		}
 	} else {
-		repository, err = db.NewMultiDatabaseRepository(dbs)
+		repository, err = db.NewMultiDatabaseRepositoryWithTTL(time.Duration(*ttl)*time.Second, *dbCleanupInterval, dbs)
 		if err != nil {
 			log.Fatalf("new multi database repository: %v", err)
 		}
@@ -135,6 +140,12 @@ func main() {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = *verbose
 	proxy.AllowHTTP2 = *allowHTTP2
+
+	if *authUser != "" {
+		auth.ProxyBasic(proxy, "Auth", func(user, passwd string) bool {
+			return user == *authUser && *authPass == passwd
+		})
+	}
 
 	if *caCert != "" && *caCertKey != "" {
 		proxy.Logger.Printf("INFO: Starting HTTP/HTTPS Proxy...")

@@ -29,7 +29,7 @@ type Response struct {
 	TableName    string
 }
 
-func NewRepository(db *sql.DB, tableNames ...string) (Repository, error) {
+func NewRepository(db *sql.DB, ttl time.Duration, cleanupInterval time.Duration, tableNames ...string) (Repository, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db is nil")
 	}
@@ -42,10 +42,10 @@ func NewRepository(db *sql.DB, tableNames ...string) (Repository, error) {
 	}
 
 	if len(tableNames) == 1 {
-		return newSingleRepository(db, tableNames[0])
+		return newSingleRepository(db, tableNames[0], ttl, cleanupInterval)
 	}
 
-	return newConcurrentRepository(db, 0, tableNames...)
+	return newConcurrentRepository(db, 0, ttl, cleanupInterval, tableNames...)
 }
 
 func CreateResponseTableQuery(tableName string) string {
@@ -156,4 +156,8 @@ func execWriter(ctx context.Context, stmt *sql.Stmt, url string, resp *Response)
 		return fmt.Errorf("store response: %w", err)
 	}
 	return nil
+}
+
+func cleanupByTTLQuery(tableName string) string {
+	return fmt.Sprintf("DELETE FROM %s WHERE rowid IN (SELECT rowid FROM %s WHERE unixepoch() - unixepoch(response_time) > ? ORDER BY rowid LIMIT 1000)", tableName, tableName)
 }

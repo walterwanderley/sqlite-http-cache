@@ -20,11 +20,11 @@ type readWriteRFC9111Transport struct {
 	sharedCache     bool
 }
 
-func newReadWriteRFC9111Transport(base http.RoundTripper, sqlDB *sql.DB, cacheableStatus []int, sharedCache bool, ttl time.Duration, tableNames ...string) (*readWriteRFC9111Transport, error) {
+func newReadWriteRFC9111Transport(base http.RoundTripper, sqlDB *sql.DB, cacheableStatus []int, sharedCache bool, ttl time.Duration, cleanupInterval time.Duration, tableNames ...string) (*readWriteRFC9111Transport, error) {
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone()
 	}
-	querier, err := db.NewRepository(sqlDB, tableNames...)
+	querier, err := db.NewRepository(sqlDB, ttl, cleanupInterval, tableNames...)
 	if err != nil {
 		return nil, fmt.Errorf("creating repository: %w", err)
 	}
