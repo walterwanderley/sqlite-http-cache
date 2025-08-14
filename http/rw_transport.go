@@ -49,7 +49,7 @@ func (t *readWriteTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if err != nil || (t.ttl > 0 && time.Since(respDB.ResponseTime) > t.ttl) ||
 		(len(t.cacheableStatus) > 0 && !slices.Contains(t.cacheableStatus, respDB.Status)) {
 		resp, err := t.base.RoundTrip(req)
-		if err == nil {
+		if err == nil && respDB != nil {
 			newRespDB, err := db.HttpToResponse(resp)
 			if err == nil {
 				newRespDB.TableName = respDB.TableName

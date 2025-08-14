@@ -65,7 +65,7 @@ func (t *readWriteRFC9111Transport) RoundTrip(req *http.Request) (*http.Response
 		responseTime := time.Now()
 
 		respCC := ParseCacheControl(http.Header(resp.Header), &requestTime, &responseTime, t.sharedCache, ttlSeconds)
-		if slices.Contains(t.cacheableStatus, resp.StatusCode) && respCC.Cacheable() {
+		if slices.Contains(t.cacheableStatus, resp.StatusCode) && respCC.Cacheable() && respDB != nil {
 			newRespDB, err := db.HttpToResponse(resp)
 			if err == nil {
 				newRespDB.TableName = respDB.TableName
