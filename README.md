@@ -114,7 +114,7 @@ You can configure the behaviour by passing parameters to a VIRTUAL TABLE.
 
 **Any other parameter will be included as an HTTP header in the request** 
 
-You ca use environment variable in the param values. Example:
+You can use environment variables in parameter values. For example:
 
 ```sql
 CREATE VIRTUAL TABLE temp.custom_request USING http_request(authorization='Bearer ${API_TOKEN}');
