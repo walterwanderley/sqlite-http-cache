@@ -87,6 +87,7 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 	header := headerBuf.String()
 	responseTime := time.Now().Format(time.RFC3339Nano)
 	vt.mu.Lock()
+	defer vt.mu.Unlock()
 	err = vt.stmt.Reset()
 	if err != nil {
 		return 0, err
@@ -104,7 +105,6 @@ func (vt *RequestVirtualTable) Insert(values ...sqlite.Value) (int64, error) {
 	vt.stmt.BindText(10, requestTime)
 	vt.stmt.BindText(11, responseTime)
 	_, err = vt.stmt.Step()
-	vt.mu.Unlock()
 	if err != nil {
 		return 0, err
 	}
