@@ -12,6 +12,8 @@ github.com/libsql/sqlite-antlr4-parser v0.0.0-20240327125255-dbf53b6cbf06 h1:JLv
 github.com/libsql/sqlite-antlr4-parser v0.0.0-20240327125255-dbf53b6cbf06/go.mod h1:FUkZ5OHjlGPjnM2UyGJz9TypXQFgYqw6AFNO1UiROTM=
 github.com/litesql/httpcache v0.0.0-20250816011819-7542d6dcfb65 h1:pD9aqQUugY3HrbtJAxbqrb7gqoQZ69X3o2GFqZrde4c=
 github.com/litesql/httpcache v0.0.0-20250816011819-7542d6dcfb65/go.mod h1:29TCSuBm7jNd2JkYR0LlZq9apW2syiMNW703RBgtvL4=
+github.com/litesql/httpcache v0.0.7 h1:l7g84uBaz4ux4zqbTgqxtTV6fy4lUP9a4NMBbM18TgQ=
+github.com/litesql/httpcache v0.0.7/go.mod h1:3O1kx8tzUzj8galRMpfMMbY+PIEQ3F20rikRqdQXu0Y=
 github.com/mattn/go-pointer v0.0.1 h1:n+XhsuGeVO6MEAp7xyEukFINEa+Quek5psIR/ylA6o0=
 github.com/mattn/go-pointer v0.0.1/go.mod h1:2zXcozF6qYGgmsG+SeTZz3oAbFLdD3OWqnUbNvJZAlc=
 github.com/mattn/go-sqlite3 v1.14.29 h1:1O6nRLJKvsi1H2Sj0Hzdfojwt8GiGKm+LOfLaBFaouQ=

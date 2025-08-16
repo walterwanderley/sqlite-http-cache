@@ -5,7 +5,7 @@ go 1.24
 require (
 	github.com/elazarl/goproxy v1.7.2
 	github.com/elazarl/goproxy/ext v0.0.0-20250305112401-088f758167d2
-	github.com/litesql/httpcache v0.0.0-20250816011819-7542d6dcfb65
+	github.com/litesql/httpcache v0.0.7
 	github.com/mattn/go-sqlite3 v1.14.29
 	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
 	github.com/tursodatabase/go-libsql v0.0.0-20250723062947-60e59c7150f4
