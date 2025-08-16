@@ -1,6 +1,6 @@
 package loader
 
-import _ "github.com/walterwanderley/sqlite-http-cache/extension"
+import _ "github.com/litesql/httpcache/extension"
 
 // #cgo CFLAGS: -DSQLITE_CORE
 //

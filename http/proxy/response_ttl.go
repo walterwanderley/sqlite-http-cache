@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/elazarl/goproxy"
-	"github.com/walterwanderley/sqlite-http-cache/db"
+	"github.com/litesql/httpcache/db"
 )
 
 type responseTTLHandler struct {

@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/elazarl/goproxy"
-
-	cachehttp "github.com/walterwanderley/sqlite-http-cache/http"
+	cachehttp "github.com/litesql/httpcache/http"
 )
 
 type requestRFC9111Handler struct {

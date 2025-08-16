@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/elazarl/goproxy"
-	"github.com/walterwanderley/sqlite-http-cache/db"
+	"github.com/litesql/httpcache/db"
 )
 
 type ResponseConfig struct {

@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/litesql/httpcache/config"
+	"github.com/litesql/httpcache/db"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
 	_ "github.com/walterwanderley/sqlite-http-cache/cmd/sqlite-http-refresh/internal/loader"
-	"github.com/walterwanderley/sqlite-http-cache/config"
-	"github.com/walterwanderley/sqlite-http-cache/db"
 )
 
 var (

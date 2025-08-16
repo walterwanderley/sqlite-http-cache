@@ -20,8 +20,8 @@ import (
 	"github.com/peterbourgon/ff/v4/ffhelp"
 	"github.com/tursodatabase/go-libsql"
 
-	"github.com/walterwanderley/sqlite-http-cache/config"
-	"github.com/walterwanderley/sqlite-http-cache/db"
+	"github.com/litesql/httpcache/config"
+	"github.com/litesql/httpcache/db"
 	proxyhandler "github.com/walterwanderley/sqlite-http-cache/http/proxy"
 )
 
